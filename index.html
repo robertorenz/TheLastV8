@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Last V8</title>
+<meta name="description" content="A browser remake of the 1985 Commodore 64 classic The Last V8: drive the last car on Earth back to base before the countdown ends.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">V8</span>
+      <div><h1>The Last V8</h1><p>Commodore 64 classic · browser remake</p></div>
+    </div>
+    <div class="sector" id="sector">Standby</div>
+    <div class="topbar-actions">
+      <button class="btn ghost" id="btnHelp" type="button">Help</button>
+      <button class="btn ghost" id="btnSound" type="button">Sound: on</button>
+      <button class="btn" id="btnPause" type="button">Pause</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="screen">
+      <canvas id="game" width="960" height="540" aria-label="Game view"></canvas>
+      <div class="banner" id="banner"></div>
+      <div class="touch" id="touch" aria-label="Touch controls">
+        <button class="t-left" data-key="left" type="button" aria-label="Steer left">&#9664;</button>
+        <button class="t-right" data-key="right" type="button" aria-label="Steer right">&#9654;</button>
+        <button class="t-brake" data-key="down" type="button" aria-label="Brake">&#9660;</button>
+        <button class="t-gas" data-key="up" type="button" aria-label="Accelerate">&#9650;</button>
+      </div>
+    </div>
+
+    <section class="dash" aria-label="Dashboard">
+      <div class="card">
+        <span class="k">Speed</span>
+        <div class="gauge">
+          <svg id="gauge" viewBox="0 0 120 84" aria-hidden="true"></svg>
+          <div class="gauge-val"><span id="speedVal">0</span><small>MPH</small></div>
+        </div>
+      </div>
+      <div class="card">
+        <span class="k">Systems</span>
+        <div class="bar-row"><span class="k">Fuel</span><div class="bar"><div class="bar-fill fuel" id="fuelBar"></div></div><span class="bar-val" id="fuelVal">100%</span></div>
+        <div class="bar-row"><span class="k">Radiation</span><div class="bar"><div class="bar-fill rad" id="radBar" style="width:0%"></div></div><span class="bar-val" id="radVal">0%</span></div>
+      </div>
+      <div class="card timer-card" id="timerCard">
+        <span class="k">Countdown</span>
+        <div class="timer" id="timeVal">80.0</div>
+      </div>
+      <div class="card">
+        <div class="stats">
+          <div><span class="k">Score</span><b id="scoreVal">0</b></div>
+          <div><span class="k">Best</span><b id="hiVal">0</b></div>
+          <div style="grid-column: span 2"><span class="k">Cars</span><div class="lives" id="lives"></div></div>
+        </div>
+      </div>
+      <div class="card mini-card">
+        <span class="k">Sector map</span>
+        <canvas id="minimap" width="192" height="144" aria-label="Sector map"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal-backdrop hidden" id="modal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="kicker" id="modalKicker"></div>
+      <h2 id="modalTitle"></h2>
+      <div id="modalBody"></div>
+      <div class="actions" id="modalActions"></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/levels.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
