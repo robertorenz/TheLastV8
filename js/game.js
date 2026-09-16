@@ -4,6 +4,7 @@
 
   const { LEVELS, T, TILE, buildLevel } = window.LastV8Levels;
   const Snd = window.LastV8Sound;
+  const V = window.LastV8Vector;
 
   // ---------- DOM ----------
   const $ = (s) => document.querySelector(s);
@@ -45,7 +46,9 @@
   const TOP_SPEED = 410;
   const START_LIVES = 3, MAX_LIVES = 5;
   const PALETTES = {
+    meadow: { bg: '#56c956', radGlow: '90,255,58', exit: '#f5a524', label: 'BASE' },
     river: { bg: '#2f4a22', wall: '#3a5a2a', wallDeep: '#2f4a22', wallHi: '#4f7a36', wallLo: '#1f3316', kerb: '#8a8378', road: '#3a3a3e', roadNoise: '#46464b', roadDark: '#2e2e32', rough: '#6f9a3c', roughSpeck: '#5a8030', dirt: '#8a6a3c', dirtSpeck: '#6e5330', dirtHi: '#a58453', water: '#1d5f8a', waterDeep: '#164a6e', waterHi: '#4a9bd0', bridge: '#7a5a34', bridgeDark: '#4e381f', bridgeHi: '#9a7848', rad: '#1f5a1a', radGlow: '90,255,58', exit: '#f5a524', label: 'TUNNEL' },
+    sci: { bg: '#3540c4', wall: '#3f4bd6', wallDeep: '#3540c4', wallHi: '#98a6ff', wallLo: '#161c66', kerb: '#98a6ff', road: '#8c8c8c', roadNoise: '#969696', roadDark: '#828282', rough: '#6f6f6f', roughSpeck: '#5c5c5c', rad: '#1f5a1a', radGlow: '90,255,58', exit: '#7fdede', label: 'SCI-BASE' },
     surface: { bg: '#3b2f21', wall: '#5c4832', wallDeep: '#3b2f21', wallHi: '#7d6547', wallLo: '#2a2016', kerb: '#8f7452', road: '#2a2b2f', roadNoise: '#35363b', roadDark: '#232428', rough: '#8f7a4f', roughSpeck: '#6f5c3a', rad: '#1f5a1a', radGlow: '90,255,58', exit: '#f5a524', label: 'BASE' },
     base: { bg: '#0f151c', wall: '#2b3a4b', wallDeep: '#141c25', wallHi: '#46596d', wallLo: '#0d1217', kerb: '#f5c518', road: '#1b2129', roadNoise: '#242c36', roadDark: '#161b22', rough: '#3a4652', roughSpeck: '#2a343e', rad: '#1f5a1a', radGlow: '90,255,58', exit: '#2dd4bf', label: 'GARAGE' },
     core: { bg: '#1a0c0c', wall: '#4a2020', wallDeep: '#241010', wallHi: '#6e3030', wallLo: '#120606', kerb: '#f08a24', road: '#221616', roadNoise: '#2e1c1c', roadDark: '#1a1010', rough: '#5a3a2a', roughSpeck: '#3e2718', rad: '#1f5a1a', radGlow: '90,255,58', exit: '#f5a524', label: 'VAULT' },
@@ -53,7 +56,7 @@
 
   // ---------- state ----------
   const G = {
-    state: 'boot', levelIndex: 0, loop: 1, level: null, atlas: null, pal: null, miniBase: null,
+    state: 'boot', levelIndex: 0, loop: 1, level: null, atlas: null, pal: null, mini: null,
     car: null, timeLeft: 0, score: 0, levelStartScore: 0, lives: START_LIVES, hi: store.get('lastv8.hi', 0),
     particles: [], cam: { x: 0, y: 0 }, shake: 0, t: 0, flash: 0, flashColor: '255,255,255',
     crashTimer: 0, crashReason: '', completeTimer: 0, completeShown: false, bonus: 0,
@@ -64,6 +67,11 @@
   let last = performance.now();
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  // Horizontal wrap-around for levels that loop (x lives in [0, Wpx)); no-ops on ordinary levels.
+  const wrapX = (x) => { const L = G.level; return L && L.wrap ? ((x % L.Wpx) + L.Wpx) % L.Wpx : x; };
+  const wrapDelta = (dx) => { const L = G.level; if (!L || !L.wrap) return dx; dx = ((dx % L.Wpx) + L.Wpx) % L.Wpx; return dx > L.Wpx / 2 ? dx - L.Wpx : dx; };
+  const rx = (x) => (G.level && G.level.wrap) ? G.cam.x + wrapDelta(x - G.cam.x) : x; // world x unwrapped to sit next to the camera
+  const buildAny = (def) => (def.kind === 'vector' ? V.buildVectorLevel(def) : buildLevel(def));
   const timeScale = () => Math.max(0.6, 1 - 0.12 * (G.loop - 1));
   const radScale = () => 1 + 0.25 * (G.loop - 1);
   function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -137,6 +145,26 @@
       g.fillStyle = '#2f8a22'; for (let i = 0; i < 8; i++) { g.beginPath(); g.arc(rnd() * TILE, rnd() * TILE, 1.5 + rnd() * 3, 0, Math.PI * 2); g.fill(); }
       g.fillStyle = '#7dff5a'; for (let i = 0; i < 4; i++) g.fillRect(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), 2, 2);
     });
+    if (theme === 'sci') {
+      // Machinery blocks: flat faces with a light bevel where a block meets the deck to its north or west and a
+      // deep shadow face to the south or east, so a run of wall tiles reads as one big block. Three finishes.
+      const blockSet = (base, hi, lo, dotCol, dots) => {
+        const set = [];
+        for (let m = 0; m < 16; m++) set.push(mk((g) => {
+          g.fillStyle = base; g.fillRect(0, 0, TILE, TILE);
+          if (dots) { g.fillStyle = dotCol; for (let y = 3; y < TILE; y += 6) for (let x = 3; x < TILE; x += 6) g.fillRect(x, y, 2, 2); }
+          if (!m) return;
+          g.fillStyle = hi; if (m & 1) g.fillRect(0, 0, TILE, 5); if (m & 8) g.fillRect(0, 0, 5, TILE);
+          g.fillStyle = lo; if (m & 4) g.fillRect(0, TILE - 7, TILE, 7); if (m & 2) g.fillRect(TILE - 7, 0, 7, TILE);
+          g.fillStyle = '#0a0d30';
+          if (m & 1) g.fillRect(0, 0, TILE, 1); if (m & 8) g.fillRect(0, 0, 1, TILE); if (m & 4) g.fillRect(0, TILE - 1, TILE, 1); if (m & 2) g.fillRect(TILE - 1, 0, 1, TILE);
+        }));
+        return set;
+      };
+      const wallSets = [blockSet(P.wall, P.wallHi, P.wallLo, null, false), blockSet('#c8383a', '#ff9a9a', '#5e1212', '#e57a7a', true), blockSet(P.wall, P.wallHi, P.wallLo, '#6b76f0', true)];
+      const grating = [mk((g) => { g.fillStyle = P.rough; g.fillRect(0, 0, TILE, TILE); g.fillStyle = P.roughSpeck; for (let y = 1; y < TILE; y += 4) g.fillRect(0, y, TILE, 1); g.fillStyle = '#7c7c7c'; for (let x = 0; x < TILE; x += 8) g.fillRect(x, 0, 1, TILE); })];
+      return { road, rough: grating, dirt, water, bridge, rad, wall: wallSets[0], wallSets };
+    }
     const wall = [];
     for (let m = 0; m < 16; m++) {
       wall.push(mk((g) => {
@@ -190,20 +218,31 @@
     return { road, rough, dirt, water, bridge, rad, wall };
   }
 
+  const MINI_COLORS = (L, t) => t === T.RAD ? '#3fbf2a' : t === T.ROUGH ? (L.kind === 'vector' ? '#3f9a3f' : L.theme === 'river' ? '#4f7a36' : '#6b5a3c')
+    : t === T.EXIT ? '#f5a524' : t === T.WATER ? (L.kind === 'vector' ? '#2f5fe0' : '#1d5f8a') : t === T.BRIDGE ? '#a58453' : t === T.DIRT ? '#8a6a3c' : '#8b9bb0';
   function makeMinimap(L) {
     const cv = document.createElement('canvas'); cv.width = ui.mini.width; cv.height = ui.mini.height;
     const g = cv.getContext('2d');
-    const s = Math.min(cv.width / L.w, cv.height / L.h);
+    const s = Math.min(cv.width / L.w, cv.height / L.h), ox = (cv.width - L.w * s) / 2, oy = (cv.height - L.h * s) / 2;
     g.fillStyle = '#05080b'; g.fillRect(0, 0, cv.width, cv.height);
-    for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) {
-      const t = L.grid[y * L.w + x];
-      if (t === T.WALL) continue;
-      g.fillStyle = t === T.RAD ? '#3fbf2a' : t === T.ROUGH ? (L.theme === 'river' ? '#4f7a36' : '#6b5a3c') : t === T.EXIT ? '#f5a524'
-        : t === T.WATER ? '#1d5f8a' : t === T.BRIDGE ? '#a58453' : t === T.DIRT ? '#8a6a3c' : '#8b9bb0';
-      g.fillRect(x * s, y * s, s, s);
+    if (L.kind === 'vector') {
+      g.fillStyle = '#2a6f2a'; g.fillRect(ox, oy, L.w * s, L.h * s);
+      const step = 0.5;
+      for (let y = 0; y < L.h; y += step) for (let x = 0; x < L.w; x += step) {
+        const t = L.tileAt((x + step / 2) * TILE, (y + step / 2) * TILE);
+        if (t === T.ROUGH) continue;
+        g.fillStyle = t === T.WALL ? '#1d4d1d' : MINI_COLORS(L, t);
+        g.fillRect(ox + x * s, oy + y * s, step * s + 0.4, step * s + 0.4);
+      }
+    } else {
+      for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) {
+        const t = L.grid[y * L.w + x];
+        if (t === T.WALL) continue;
+        g.fillStyle = MINI_COLORS(L, t);
+        g.fillRect(ox + x * s, oy + y * s, s, s);
+      }
     }
-    cv.scale = s;
-    return cv;
+    return { cv, s, ox, oy };
   }
 
   const vignette = (() => {
@@ -219,7 +258,7 @@
   }
   function prepareLevel(i) {
     const def = LEVELS[i];
-    G.level = buildLevel(def); G.pal = PALETTES[def.theme]; G.atlas = makeAtlas(def.theme); G.miniBase = makeMinimap(G.level);
+    G.level = buildAny(def); G.pal = PALETTES[def.theme]; G.atlas = def.kind === 'vector' ? null : makeAtlas(def.theme); G.mini = makeMinimap(G.level);
     G.t = 0; G.particles = []; G.said = {}; G.lastBeep = -1; G.fuelOutTimer = 0; G.shake = 0; G.flash = 0; G.completeShown = false;
     G.timeLeft = Math.round(def.time * timeScale()); G.levelStartScore = G.score;
     G.respawn = { x: def.start.x, y: def.start.y, dir: def.start.dir };
@@ -228,7 +267,7 @@
     ui.sector.textContent = `Sector ${i + 1} · ${def.name}` + (G.loop > 1 ? ` · Loop ${G.loop}` : '');
   }
   function snapCamera() { G.cam.x = G.car.x; G.cam.y = G.car.y; clampCamera(); }
-  function clampCamera() { const L = G.level; G.cam.x = clamp(G.cam.x, W / 2, L.w * TILE - W / 2); G.cam.y = clamp(G.cam.y, H / 2, L.h * TILE - H / 2); }
+  function clampCamera() { const L = G.level; G.cam.x = L.wrap ? wrapX(G.cam.x) : clamp(G.cam.x, W / 2, L.w * TILE - W / 2); G.cam.y = clamp(G.cam.y, H / 2, L.h * TILE - H / 2); }
 
   // ---------- modal ----------
   function showModal({ kicker = '', title, body = '', actions = [], wide = false }) {
@@ -275,7 +314,7 @@
   // Renders a real in-game view of the level around its preview point, using the same tile atlas and entity drawing.
   function renderPreview(i) {
     if (previews[i]) return previews[i];
-    const def = LEVELS[i], level = buildLevel(def), atlas = makeAtlas(def.theme), pal = PALETTES[def.theme];
+    const def = LEVELS[i], level = buildAny(def), atlas = def.kind === 'vector' ? null : makeAtlas(def.theme), pal = PALETTES[def.theme];
     const cv = document.createElement('canvas'); cv.width = 480; cv.height = 270;
     const saved = { ctx, level: G.level, atlas: G.atlas, pal: G.pal, car: G.car, cam: G.cam, state: G.state };
     const p = def.preview || def.start;
@@ -286,7 +325,8 @@
     ctx.fillStyle = pal.bg; ctx.fillRect(0, 0, W, H);
     const ox = Math.round(vw - cam.x), oy = Math.round(vh - cam.y);
     ctx.save(); ctx.translate(ox, oy);
-    drawTiles(ox, oy); drawExit(level); drawCheckpoints(level); drawFuel(level); drawWrecks(level); drawDoors(level);
+    if (level.kind === 'vector') drawVector(); else drawTiles(ox, oy);
+    drawExit(level); drawCheckpoints(level); drawFuel(level); drawWrecks(level); drawDoors(level);
     if (Math.abs(G.car.x - cam.x) < vw && Math.abs(G.car.y - cam.y) < vh) drawCar();
     ctx.restore();
     ctx.setTransform(0.5, 0, 0, 0.5, 0, 0); ctx.drawImage(vignette, 0, 0);
@@ -321,7 +361,8 @@
   }
   function moveCardFocus(dx, dy) {
     const cards = [...ui.modalBody.querySelectorAll('.level-card')]; if (!cards.length) return false;
-    const cols = window.innerWidth < 560 ? 1 : 2;
+    const grid = ui.modalBody.querySelector('.level-grid');
+    const cols = grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').length : 2;
     let i = cards.indexOf(document.activeElement); if (i < 0) i = 0;
     else i = clamp(i + dx + dy * cols, 0, cards.length - 1);
     cards[i].focus({ preventScroll: true });
@@ -508,14 +549,14 @@
       G.crashTimer -= dt;
       if (G.crashTimer <= 0) afterCrash();
     } else if (G.state === 'levelcomplete') {
-      c.speed -= c.speed * 4 * dt; c.x += Math.cos(c.angle) * c.speed * dt; c.y += Math.sin(c.angle) * c.speed * dt;
+      c.speed -= c.speed * 4 * dt; c.x = wrapX(c.x + Math.cos(c.angle) * c.speed * dt); c.y += Math.sin(c.angle) * c.speed * dt;
       G.completeTimer -= dt;
       if (G.completeTimer <= 0 && !G.completeShown) showLevelComplete();
     } else if (G.state === 'title') {
       // attract mode: the camera drifts along the level 1 checkpoints
       G.attract += dt;
       const pts = [L.start, ...L.checkpoints, { x: (L.exit[0] + L.exit[2]) / 2, y: (L.exit[1] + L.exit[3]) / 2 }];
-      const seg = 7, i = Math.floor(G.attract / seg) % pts.length, f = (G.attract % seg) / seg;
+      const seg = 7, i = ((Math.floor(G.attract / seg) % pts.length) + pts.length) % pts.length, f = (G.attract % seg) / seg;
       const a = pts[i], b = pts[(i + 1) % pts.length], e = f < 0.5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;
       G.cam.x = (a.x + (b.x - a.x) * e + 0.5) * TILE; G.cam.y = (a.y + (b.y - a.y) * e + 0.5) * TILE; clampCamera();
     }
@@ -546,7 +587,7 @@
     c.steerAmt += (steer - c.steerAmt) * Math.min(1, dt * 12);
     const sfac = Math.min(1, 0.3 + Math.abs(c.speed) / 200);
     c.angle += c.steerAmt * 2.7 * sfac * dt * (c.speed < 0 ? -1 : 1);
-    c.x += Math.cos(c.angle) * c.speed * dt;
+    c.x = wrapX(c.x + Math.cos(c.angle) * c.speed * dt);
     c.y += Math.sin(c.angle) * c.speed * dt;
     c.fuel = Math.max(0, c.fuel - (0.35 + throttle * 1.45) * dt);
     c.throttle = throttle; c.brake = brake; c.steer = steer; c.skid = steer !== 0 && Math.abs(c.speed) > 250;
@@ -570,12 +611,19 @@
 
     const tx = Math.floor(c.x / TILE), ty = Math.floor(c.y / TILE);
     for (const cp of L.checkpoints) {
-      if (!cp.taken && tx >= cp.bounds.x0 && tx <= cp.bounds.x1 && ty >= cp.bounds.y0 && ty <= cp.bounds.y1) {
+      if (cp.taken) continue;
+      let hitCp;
+      if (cp.seg) { // vector levels: a line across the road; count it when the car centre is within 16px of it
+        const ax = c.x + wrapDelta(cp.seg.ax - c.x), bx = c.x + wrapDelta(cp.seg.bx - c.x), ay = cp.seg.ay, by = cp.seg.by;
+        const vx = bx - ax, vy = by - ay, len2 = vx * vx + vy * vy || 1, t = clamp(((c.x - ax) * vx + (c.y - ay) * vy) / len2, 0, 1);
+        hitCp = Math.hypot(c.x - (ax + vx * t), c.y - (ay + vy * t)) < 16;
+      } else hitCp = tx >= cp.bounds.x0 && tx <= cp.bounds.x1 && ty >= cp.bounds.y0 && ty <= cp.bounds.y1;
+      if (hitCp) {
         cp.taken = true; G.respawn = { x: cp.x, y: cp.y, dir: cp.dir }; G.score += 250; G.timeLeft += 4; Snd.checkpoint(); banner('Checkpoint · +4s', 'ok');
       }
     }
     for (const f of L.fuel) {
-      if (!f.taken && Math.hypot(c.x - f.x, c.y - f.y) < 24) { f.taken = true; c.fuel = Math.min(100, c.fuel + 40); G.score += 100; Snd.pickup(); banner('Fuel +40%'); }
+      if (!f.taken && Math.hypot(wrapDelta(c.x - f.x), c.y - f.y) < 24) { f.taken = true; c.fuel = Math.min(100, c.fuel + 40); G.score += 100; Snd.pickup(); banner('Fuel +40%'); }
     }
     if (under === T.EXIT) completeLevel();
   }
@@ -613,7 +661,7 @@
   function hitsWreck(c) {
     const cs = Math.cos(c.angle), sn = Math.sin(c.angle);
     for (const wk of G.level.wrecks) {
-      const dx = wk.x - c.x, dy = wk.y - c.y;
+      const dx = wrapDelta(wk.x - c.x), dy = wk.y - c.y;
       if (dx * dx + dy * dy > 40 * 40) continue;
       const lx = dx * cs + dy * sn, ly = -dx * sn + dy * cs;
       const qx = clamp(lx, -CAR_L / 2, CAR_L / 2), qy = clamp(ly, -CAR_W / 2, CAR_W / 2);
@@ -637,7 +685,7 @@
     const c = G.car;
     const tx = c.x + Math.cos(c.angle) * c.speed * 0.32, ty = c.y + Math.sin(c.angle) * c.speed * 0.32;
     const k = 1 - Math.pow(0.002, dt);
-    G.cam.x += (tx - G.cam.x) * k; G.cam.y += (ty - G.cam.y) * k;
+    G.cam.x += wrapDelta(tx - G.cam.x) * k; G.cam.y += (ty - G.cam.y) * k;
     clampCamera();
   }
 
@@ -680,7 +728,7 @@
   }
   function updateWreckSmoke(dt) {
     for (const wk of G.level.wrecks) {
-      if (Math.abs(wk.x - G.cam.x) > W / 2 + 40 || Math.abs(wk.y - G.cam.y) > H / 2 + 40) continue;
+      if (Math.abs(wrapDelta(wk.x - G.cam.x)) > W / 2 + 40 || Math.abs(wk.y - G.cam.y) > H / 2 + 40) continue;
       wk.smoke -= dt;
       if (wk.smoke <= 0) { wk.smoke = 0.35 + Math.random() * 0.4; G.particles.push({ type: 'smoke', x: wk.x + (Math.random() - 0.5) * 10, y: wk.y + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 8, vy: -12 - Math.random() * 10, life: 1.6, max: 1.6, size: 3, grow: 14, color: '90,90,90', alpha: 0.35 }); }
     }
@@ -694,7 +742,7 @@
     const ox = Math.round(W / 2 - G.cam.x + sx), oy = Math.round(H / 2 - G.cam.y + sy);
     ctx.fillStyle = P.bg; ctx.fillRect(0, 0, W, H);
     ctx.save(); ctx.translate(ox, oy);
-    drawTiles(ox, oy);
+    if (L.kind === 'vector') drawVector(); else drawTiles(ox, oy);
     drawExit(L);
     drawCheckpoints(L);
     drawFuel(L);
@@ -717,7 +765,7 @@
       for (let x = x0; x <= x1; x++) {
         const i = y * L.w + x, t = L.grid[i];
         let img;
-        if (t === T.WALL) img = A.wall[L.mask[i]];
+        if (t === T.WALL) { if (A.wallSets) { const hsh = (((x >> 3) * 73856093) ^ ((y >> 3) * 19349663)) >>> 0; img = A.wallSets[hsh % 11 === 0 ? 1 : hsh % 11 < 4 ? 2 : 0][L.mask[i]]; } else img = A.wall[L.mask[i]]; }
         else if (t === T.ROUGH) img = A.rough[(x * 3 + y * 5) % A.rough.length];
         else if (t === T.DIRT) img = A.dirt[(x * 5 + y * 3) % A.dirt.length];
         else if (t === T.WATER) { img = A.water[(x + y + frame) & 3]; if (L.mask[i]) shoreTiles.push(x, y, L.mask[i]); }
@@ -738,6 +786,7 @@
         if (m & 2) ctx.fillRect(x + TILE - 2, y, 2, TILE);
       }
     }
+    if (L.def.labels) drawFloorMarks(L, x0, y0, x1, y1);
     for (let i = 0; i < bridgeTiles.length; i += 2) {
       const tx = bridgeTiles[i], ty = bridgeTiles[i + 1], x = tx * TILE, y = ty * TILE;
       const rail = (rx, ry, rw, rh) => { ctx.fillStyle = '#3a2a16'; ctx.fillRect(rx, ry, rw, rh); ctx.fillStyle = '#a58453'; ctx.fillRect(rx, ry, rw > rh ? rw : 1.5, rw > rh ? 1.5 : rh); };
@@ -758,8 +807,39 @@
     }
   }
 
+  // Vector levels: blit cached map chunks; the chunk index wraps so the view can straddle the world seam.
+  function drawVector() {
+    const L = G.level, CH = L.CH;
+    const vx0 = G.cam.x - W / 2, vx1 = G.cam.x + W / 2;
+    const y0 = Math.max(0, Math.floor((G.cam.y - H / 2) / CH)), y1 = Math.min(L.chunksY - 1, Math.floor((G.cam.y + H / 2) / CH));
+    for (const off of (L.wrap ? [-L.Wpx, 0, L.Wpx] : [0])) {
+      const cx0 = Math.max(0, Math.floor((vx0 - off) / CH)), cx1 = Math.min(L.chunksX - 1, Math.floor((vx1 - off) / CH));
+      for (let cy = y0; cy <= y1; cy++) for (let cx = cx0; cx <= cx1; cx++) ctx.drawImage(L.getChunk(cx, cy), cx * CH + off, cy * CH);
+    }
+  }
+
+  // Text and arrows painted on the deck (Sci-Base zone names and the way up).
+  function drawFloorMarks(L, x0, y0, x1, y1) {
+    ctx.save();
+    ctx.font = '700 15px Orbitron, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    for (const lb of L.def.labels) {
+      if (lb.x > x1 + 8 || lb.x < x0 - 8 || lb.y > y1 + 1 || lb.y < y0 - 1) continue;
+      const px = lb.x * TILE, py = lb.y * TILE;
+      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillText(lb.text, px + 1.5, py + 1.5);
+      ctx.fillStyle = '#f4f4f4'; ctx.fillText(lb.text, px, py);
+    }
+    for (const ar of L.def.arrows || []) {
+      if (ar.x > x1 + 2 || ar.x < x0 - 2 || ar.y > y1 + 2 || ar.y < y0 - 2) continue;
+      ctx.save(); ctx.translate((ar.x + 0.5) * TILE, ar.y * TILE); ctx.rotate(ar.dir * Math.PI / 180);
+      ctx.fillStyle = '#f5e14a'; ctx.beginPath(); ctx.moveTo(-16, -4); ctx.lineTo(4, -4); ctx.lineTo(4, -10); ctx.lineTo(18, 0); ctx.lineTo(4, 10); ctx.lineTo(4, 4); ctx.lineTo(-16, 4); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
   function drawExit(L) {
-    const P = G.pal, e = L.exit, x = e[0] * TILE, y = e[1] * TILE, w = (e[2] - e[0] + 1) * TILE, h = (e[3] - e[1] + 1) * TILE;
+    const P = G.pal, e = L.exit, x = rx(e[0] * TILE), y = e[1] * TILE, w = (e[2] - e[0] + 1) * TILE, h = (e[3] - e[1] + 1) * TILE;
     const pulse = 0.5 + 0.5 * Math.sin(G.t * 3);
     ctx.save();
     ctx.fillStyle = `rgba(245,165,36,${0.08 + pulse * 0.1})`; ctx.fillRect(x, y, w, h);
@@ -776,6 +856,14 @@
   function drawCheckpoints(L) {
     for (const cp of L.checkpoints) {
       const col = cp.taken ? 'rgba(139,155,176,0.35)' : 'rgba(45,212,191,0.9)';
+      if (cp.seg) { // a chevroned line across the road
+        const ax = rx(cp.seg.ax), bx = ax + (cp.seg.bx - cp.seg.ax);
+        ctx.strokeStyle = col; ctx.lineWidth = 5; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(ax, cp.seg.ay); ctx.lineTo(bx, cp.seg.by); ctx.stroke();
+        ctx.setLineDash([6, 6]); ctx.strokeStyle = cp.taken ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(ax, cp.seg.ay); ctx.lineTo(bx, cp.seg.by); ctx.stroke(); ctx.setLineDash([]);
+        continue;
+      }
       for (const [tx, ty] of cp.tiles) {
         const x = tx * TILE, y = ty * TILE;
         ctx.fillStyle = col;
@@ -789,7 +877,7 @@
     for (const f of L.fuel) {
       if (f.taken) continue;
       const bob = Math.sin(G.t * 3 + f.x) * 2;
-      ctx.save(); ctx.translate(f.x, f.y + bob);
+      ctx.save(); ctx.translate(rx(f.x), f.y + bob);
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(0, 10 - bob, 10, 4, 0, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#d8341f'; roundRect(-8, -9, 16, 18, 3); ctx.fill();
       ctx.fillStyle = '#f5c518'; ctx.fillRect(-3, -12, 6, 4);
@@ -801,8 +889,17 @@
 
   function drawWrecks(L) {
     for (const wk of L.wrecks) {
-      if (Math.abs(wk.x - G.cam.x) > W / 2 + 40 || Math.abs(wk.y - G.cam.y) > H / 2 + 40) continue;
-      ctx.save(); ctx.translate(wk.x, wk.y); ctx.rotate(wk.a);
+      if (Math.abs(wrapDelta(wk.x - G.cam.x)) > W / 2 + 40 || Math.abs(wk.y - G.cam.y) > H / 2 + 40) continue;
+      if (L.theme === 'sci') { // a round support column
+        ctx.save(); ctx.translate(rx(wk.x), wk.y);
+        ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.arc(3, 3, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#2b3480'; ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#8f9bff'; ctx.beginPath(); ctx.arc(-2, -2, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#d8dcff'; ctx.beginPath(); ctx.arc(-4, -4, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#f5e14a'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+        ctx.restore(); continue;
+      }
+      ctx.save(); ctx.translate(rx(wk.x), wk.y); ctx.rotate(wk.a);
       ctx.fillStyle = 'rgba(0,0,0,0.4)'; roundRect(-11, -5, 24, 14, 3); ctx.fill();
       ctx.fillStyle = '#2a2a2a'; roundRect(-12, -7, 24, 14, 3); ctx.fill();
       ctx.fillStyle = '#6b3a1f'; ctx.fillRect(-9, -6, 6, 5); ctx.fillRect(3, 1, 7, 5);
@@ -843,7 +940,7 @@
 
   function drawCar() {
     const c = G.car; if (!c.visible) return;
-    ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.angle);
+    ctx.save(); ctx.translate(rx(c.x), c.y); ctx.rotate(c.angle);
     // headlight cone
     if (G.state !== 'title') {
       const gr = ctx.createLinearGradient(13, 0, 90, 0); gr.addColorStop(0, 'rgba(255,244,200,0.28)'); gr.addColorStop(1, 'rgba(255,244,200,0)');
@@ -868,9 +965,10 @@
   function drawParticles() {
     for (const p of G.particles) {
       const f = Math.max(0, p.life / p.max);
-      if (p.type === 'smoke') { ctx.fillStyle = `rgba(${p.color},${f * p.alpha})`; ctx.beginPath(); ctx.arc(p.x, p.y, p.size + (1 - f) * p.grow, 0, Math.PI * 2); ctx.fill(); }
-      else if (p.type === 'fire') { ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(${p.color},${f})`; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.4 + f), 0, Math.PI * 2); ctx.fill(); ctx.globalCompositeOperation = 'source-over'; }
-      else { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.globalAlpha = Math.min(1, f * 2); ctx.fillStyle = p.color; ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6); ctx.restore(); }
+      const px = rx(p.x);
+      if (p.type === 'smoke') { ctx.fillStyle = `rgba(${p.color},${f * p.alpha})`; ctx.beginPath(); ctx.arc(px, p.y, p.size + (1 - f) * p.grow, 0, Math.PI * 2); ctx.fill(); }
+      else if (p.type === 'fire') { ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(${p.color},${f})`; ctx.beginPath(); ctx.arc(px, p.y, p.size * (0.4 + f), 0, Math.PI * 2); ctx.fill(); ctx.globalCompositeOperation = 'source-over'; }
+      else { ctx.save(); ctx.translate(px, p.y); ctx.rotate(p.rot); ctx.globalAlpha = Math.min(1, f * 2); ctx.fillStyle = p.color; ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6); ctx.restore(); }
     }
   }
 
@@ -918,23 +1016,27 @@
   }
 
   function drawMinimap() {
-    const L = G.level, base = G.miniBase, s = base.scale;
-    mctx.drawImage(base, 0, 0);
+    const L = G.level, { cv, s, ox, oy } = G.mini;
+    const mx = (px) => ox + (px / TILE) * s, my = (py) => oy + (py / TILE) * s;
+    mctx.drawImage(cv, 0, 0);
     const blink = Math.sin(G.t * 6) > 0;
-    const e = L.exit; if (blink) { mctx.fillStyle = '#ffd27a'; mctx.fillRect(e[0] * s - 1, e[1] * s - 1, (e[2] - e[0] + 1) * s + 2, (e[3] - e[1] + 1) * s + 2); }
-    for (const cp of L.checkpoints) { mctx.fillStyle = cp.taken ? '#2dd4bf' : '#e6edf3'; mctx.fillRect(cp.x * s - 1, cp.y * s - 1, s + 2, s + 2); }
-    for (const f of L.fuel) if (!f.taken) { mctx.fillStyle = '#f5a524'; mctx.fillRect(f.tx * s, f.ty * s, s, s); }
-    for (const d of L.doors) { mctx.fillStyle = d.openAmt > 0.98 ? '#22c55e' : '#ef4444'; mctx.fillRect(d.px / TILE * s, d.py / TILE * s, d.pw / TILE * s, d.ph / TILE * s); }
+    const e = L.exit; if (blink) { mctx.fillStyle = '#ffd27a'; mctx.fillRect(ox + e[0] * s - 1, oy + e[1] * s - 1, (e[2] - e[0] + 1) * s + 2, (e[3] - e[1] + 1) * s + 2); }
+    for (const cp of L.checkpoints) { mctx.fillStyle = cp.taken ? '#2dd4bf' : '#e6edf3'; mctx.fillRect(ox + cp.x * s - 1, oy + cp.y * s - 1, s + 2, s + 2); }
+    for (const f of L.fuel) if (!f.taken) { mctx.fillStyle = '#f5a524'; mctx.fillRect(ox + f.tx * s - 0.5, oy + f.ty * s - 0.5, s + 1, s + 1); }
+    for (const d of L.doors) { mctx.fillStyle = d.openAmt > 0.98 ? '#22c55e' : '#ef4444'; mctx.fillRect(mx(d.px), my(d.py), d.pw / TILE * s, d.ph / TILE * s); }
     if (G.state !== 'title') {
       mctx.strokeStyle = 'rgba(230,237,243,0.35)'; mctx.lineWidth = 1;
-      mctx.strokeRect((G.cam.x - W / 2) / TILE * s + 0.5, (G.cam.y - H / 2) / TILE * s + 0.5, W / TILE * s, H / TILE * s);
-      const c = G.car; mctx.fillStyle = '#ff3b1f'; mctx.beginPath(); mctx.arc(c.x / TILE * s, c.y / TILE * s, 3, 0, Math.PI * 2); mctx.fill();
+      const vx = G.cam.x - W / 2, vw = W / TILE * s, vh = H / TILE * s;
+      mctx.strokeRect(mx(vx) + 0.5, my(G.cam.y - H / 2) + 0.5, vw, vh);
+      if (L.wrap && vx < 0) mctx.strokeRect(mx(vx + L.Wpx) + 0.5, my(G.cam.y - H / 2) + 0.5, vw, vh);
+      if (L.wrap && vx + W > L.Wpx) mctx.strokeRect(mx(vx - L.Wpx) + 0.5, my(G.cam.y - H / 2) + 0.5, vw, vh);
+      const c = G.car; mctx.fillStyle = '#ff3b1f'; mctx.beginPath(); mctx.arc(mx(wrapX(c.x)), my(c.y), 3, 0, Math.PI * 2); mctx.fill();
     }
   }
 
   // ---------- main loop ----------
   function frame(now) {
-    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; // never negative: the first rAF stamp can predate `last`
     if (G.state === 'play' || G.state === 'crash' || G.state === 'levelcomplete' || G.state === 'title' || G.state === 'gameover') update(dt);
     render();
     requestAnimationFrame(frame);

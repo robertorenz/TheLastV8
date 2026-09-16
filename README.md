@@ -22,12 +22,14 @@ On desktop the game view fills every pixel between the top bar and the dashboard
 
 ## The mission
 
-Pick a sector from the mission-select screen (each card shows a rendered preview of the map). Four sectors, each with its own countdown:
+Pick a sector from the mission-select screen (each card shows a rendered preview of the map). Ten sectors, each with its own countdown:
 
-1. **Riverlands** — modelled on the original's first level: lakes, a river, plank bridges barely wider than the car, dirt tracks and grass verges.
-2. **The Wasteland** — surface run through the ruins. Background radiation climbs the whole time.
-3. **The Base** — underground corridors sealed by blast doors on automatic cycles.
-4. **Reactor Core** — passages barely wider than the car, faster doors, more leaks.
+1. **Riverlands** — modelled on the original's surface map: bright grass, winding grey roads, two dashed highways, a river with plank bridges, lakes, farmhouses and a crop field. The world wraps horizontally — keep driving east and you come back round from the west.
+2. **Sci-Base** — modelled on the original's underground map: eleven stacked corridor zones (A at the bottom, K at the top) between bevelled machinery blocks, with zone names and arrows painted on the deck.
+3. **The Wasteland** — surface run through the ruins. Background radiation climbs the whole time.
+4. **The Base** — underground corridors sealed by blast doors on automatic cycles.
+5. **Reactor Core** — passages barely wider than the car, faster doors, more leaks.
+6.–10. **Ash Highway, Coolant Deck, Cinder Run, Vault Nine, Outpost Delta** — seeded random sectors in the authored styles: a winding main road, blind spurs, rubble, leaks, columns and (underground) doors. The same seed always produces the same map.
 
 Reach the base marker before the clock hits zero. Along the way:
 
@@ -46,12 +48,14 @@ You start with three cars and earn one back for each sector cleared. Clearing a 
 ```
 index.html      page and dashboard markup
 css/style.css   cockpit chrome (light and dark themes, responsive)
-js/levels.js    level definitions and grid builder
+js/levels.js    level definitions, the Sci-Base zone generator, the seeded random generator, grid builder
+js/vector.js    vector levels: spline roads, lakes, river, buildings, trees -> fine collision grid + cached map chunks
 js/audio.js     Web Audio synth: engine, effects, four-chord chiptune
 js/game.js      physics, collisions, rendering, HUD, modals, speech
 ```
 
-- Levels are authored as axis-aligned road paths (tarmac or dirt) carved into rock, then decorated with grass verges, water, bridges, rough patches, radiation, fuel, checkpoints, wrecks and doors (`js/levels.js`).
+- Tile levels are authored as axis-aligned road paths (tarmac or dirt) carved into rock, then decorated with grass verges, water, bridges, rough patches, radiation, fuel, checkpoints, wrecks and doors (`js/levels.js`).
+- Vector levels (Riverlands) are authored as smooth Catmull-Rom road splines, lake polygons, a river, bridges, hedges and buildings. The same painting code rasterises an 8-px collision grid and paints the on-screen map in cached 384-px chunks, so what you see is exactly what kills you. Wrap-around levels draw three copies of the world around the seam.
 - Sector previews on the select screen are rendered live from each level's own tile atlas, so they always match what you will drive through.
 - The car is a momentum model: acceleration, braking, drag, speed-dependent steering with ramp-in. Eight body points are tested against the tile grid, door panels and wreck circles every frame.
 - Voice lines ("Return to base immediately") use the Web Speech API when the browser has an English voice.
