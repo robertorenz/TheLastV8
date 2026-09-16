@@ -144,6 +144,18 @@
     for (const t of L.trees) if (inBounds(bounds, t.x, t.y, t.r + 4)) paintTree(g, t, P);
   }
 
+  function overhangOf(geo, Wpx) {
+    let over = 0;
+    const pts = (list) => { for (const [x] of list) over = Math.max(over, x - Wpx, -x); };
+    for (const r of geo.roads) pts(r.pts);
+    if (geo.river) pts(geo.river.pts);
+    for (const l of geo.lakes) pts(l);
+    for (const h of geo.hedges) pts(h);
+    for (const b of geo.bridges) { pts([b.a, b.b]); }
+    for (const b of geo.buildings) over = Math.max(over, b.x + b.w - Wpx, -b.x);
+    return over + 2 * TILE;
+  }
+
   function buildVectorLevel(def) {
     const w = def.w, h = def.h, cell = def.cell || 8, Wpx = w * TILE, Hpx = h * TILE;
     const gw = Math.ceil(Wpx / cell), gh = Math.ceil(Hpx / cell);
@@ -205,7 +217,7 @@
       def, kind: 'vector', wrap: !!def.wrap, w, h, Wpx, Hpx, cell, gw, gh, grid, geo, trees, decor, palette: P,
       tileAt, get: (tx, ty) => tileAt((tx + 0.5) * TILE, (ty + 0.5) * TILE),
       checkpoints, doors: [], fuel, wrecks, exit: def.exit, start: def.start, theme: def.theme,
-      chunksX: Math.ceil(Wpx / CH), chunksY: Math.ceil(Hpx / CH), CH, chunks: new Map(),
+      chunksX: Math.ceil(Wpx / CH), chunksY: Math.ceil(Hpx / CH), CH, chunks: new Map(), overhang: overhangOf(geo, Wpx),
     };
     L.getChunk = (cx, cy) => {
       const key = cx + ',' + cy;
@@ -227,7 +239,7 @@
     g.fillStyle = P.grassLight; for (let i = 0; i < 90; i++) g.fillRect((r() * CH) | 0, (r() * CH) | 0, 2, 1);
     const offsets = L.wrap ? [-L.Wpx, 0, L.Wpx] : [0];
     for (const off of offsets) {
-      if (wx + CH < off - 300 || wx > off + L.Wpx + 300) continue;
+      if (wx + CH < off - L.overhang || wx > off + L.Wpx + L.overhang) continue; // this copy of the world reaches into the chunk
       g.setTransform(1, 0, 0, 1, off - wx, -wy);
       paintDisplay(g, L, { x0: wx - off - 48, y0: wy - 48, x1: wx - off + CH + 48, y1: wy + CH + 48 });
     }
