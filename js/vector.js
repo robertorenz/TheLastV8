@@ -107,6 +107,15 @@
       g.fillStyle = P.ridge; g.fillRect(ix, iy + ih / 2 - 1, iw, 2);
       g.fillStyle = P.chimney; g.fillRect(ix + iw - 18, iy + 6, 9, 9);
       g.fillStyle = P.door; g.fillRect(x + w / 2 - 6, y + h - 5, 12, 5);
+    } else if (b.kind === 'pool') { // cyan-walled pool with a white deck
+      g.fillStyle = P.baseRoof; g.fillRect(x, y, w, h);
+      g.fillStyle = P.wallWhite; g.fillRect(x + 5, y + 5, w - 10, h - 10);
+      g.fillStyle = P.baseRoofDark; for (let xx = x + 12; xx < x + w - 10; xx += 12) for (let yy = y + 12; yy < y + h - 10; yy += 12) g.fillRect(xx, yy, 4, 4);
+    } else if (b.kind === 'shed') { // long white shed with a grey roof
+      g.fillStyle = P.wallWhite; g.fillRect(x, y, w, h);
+      g.fillStyle = '#c9c9c9'; g.fillRect(x + 4, y + 4, w - 8, h - 8);
+      g.fillStyle = '#a8a8a8'; g.fillRect(x + 4, y + h / 2 - 1, w - 8, 2);
+      g.fillStyle = P.door; g.fillRect(x + w - 16, y + h - 5, 10, 5);
     } else if (b.kind === 'field') {
       g.fillStyle = P.field; g.fillRect(x, y, w, h);
       g.fillStyle = P.fieldDot;

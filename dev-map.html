@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>map overview</title>
+<style>body{margin:0;background:#111}canvas{display:block}</style></head>
+<body>
+<canvas id="c" width="1400" height="560"></canvas>
+<script src="js/levels.js"></script>
+<script src="js/vector.js"></script>
+<script>
+// Whole-map overview of a vector level (default: sector 1), 1.5 world widths wide so the wrap join is visible.
+const { LEVELS } = LastV8Levels;
+const idx = Number(new URLSearchParams(location.search).get('sector') || 1) - 1;
+const L = LastV8Vector.buildVectorLevel(LEVELS[idx]);
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+const scale = cv.width / (L.Wpx * 1.5); cv.height = Math.round(L.Hpx * scale);
+g.setTransform(scale, 0, 0, scale, 0, 0);
+for (const off of [0, L.Wpx]) for (let cy = 0; cy < L.chunksY; cy++) for (let cx = 0; cx < L.chunksX; cx++) {
+  const wx = cx * L.CH + off; if (wx > L.Wpx * 1.5) continue;
+  g.drawImage(L.getChunk(cx, cy), wx, cy * L.CH);
+}
+g.strokeStyle = 'rgba(255,255,0,0.6)'; g.lineWidth = 4 / scale; g.beginPath(); g.moveTo(L.Wpx, 0); g.lineTo(L.Wpx, L.Hpx); g.stroke();
+</script>
+</body></html>
+<script>
+// connectivity check: BFS over the collision grid from the start tile to the exit; result goes into the page title
+(function () {
+  const { T, TILE } = LastV8Levels; const def = LEVELS[idx];
+  const gw = L.gw, gh = L.gh, seen = new Uint8Array(gw * gh);
+  const sx = Math.floor((def.start.x + 0.5) * TILE / L.cell), sy = Math.floor((def.start.y + 0.5) * TILE / L.cell);
+  const q = [sx + sy * gw]; seen[q[0]] = 1; let n = 0, exit = false, cps = 0;
+  const ok = (t) => t !== T.WALL && t !== T.WATER;
+  while (q.length) { const i = q.pop(); n++; const x = i % gw, y = (i - x) / gw; if (L.grid[i] === T.EXIT) exit = true;
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) { const nx = ((x + dx) % gw + gw) % gw, ny = y + dy; if (ny < 0 || ny >= gh) continue; const j = nx + ny * gw; if (!seen[j] && ok(L.grid[j])) { seen[j] = 1; q.push(j); } } }
+  for (const c of L.checkpoints) { const cx = Math.floor(c.seg.ax / L.cell), cy = Math.floor((c.seg.ay + c.seg.by) / 2 / L.cell); if (seen[((cx % gw) + gw) % gw + cy * gw]) cps++; }
+  document.title = 'reach=' + n + ' exit=' + exit + ' checkpoints=' + cps + '/' + L.checkpoints.length + ' start=' + (ok(L.grid[sx + sy * gw]) ? 'road' : 'BLOCKED');
+})();
+</script>

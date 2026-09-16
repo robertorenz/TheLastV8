@@ -39,7 +39,7 @@ Reach the base marker before the clock hits zero. Along the way:
 - **Water** sinks the car — bridges are the only way across.
 - **Radiation pools** push the meter toward lethal.
 - **Wrecks** and **closed blast doors** are as solid as rock.
-- Not every road leads somewhere — some end in radiation, one ends in a lake.
+- Not every road leads somewhere — some end in radiation.
 
 You start with three cars and earn one back for each sector cleared. Clearing a sector continues to the next; finishing the last one loops the mission with a shorter countdown. Cleared sectors and the best score are remembered in the browser.
 
@@ -64,7 +64,7 @@ js/game.js      physics, collisions, rendering, HUD, modals, speech
 ## Developer notes
 
 - `index.html?sector=N&at=x,y&dir=deg` jumps straight into sector N with the car at tile (x, y) — handy for checking a spot on a map.
-- `dev-seam.html` renders the raw Riverlands map chunks around the wrap seam with the collision rows either side of it.
+- `dev-seam.html` renders the raw Riverlands map chunks around the wrap seam with the collision rows either side of it; `dev-map.html?sector=1` renders a whole vector map at 1.5 world widths (so the wrap join is visible) and puts a start-to-exit connectivity check in the page title.
 
 ## Credits
 
