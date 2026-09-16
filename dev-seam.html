@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>seam test</title>
+<style>body{margin:0;background:#111;color:#eee;font:13px monospace}canvas{display:block}pre{padding:8px}</style></head>
+<body>
+<pre id="out"></pre>
+<canvas id="c" width="1400" height="700"></canvas>
+<script src="js/levels.js"></script>
+<script src="js/vector.js"></script>
+<script>
+const { LEVELS, T, TILE } = LastV8Levels;
+const L = LastV8Vector.buildVectorLevel(LEVELS[0]);
+const g = document.getElementById('c').getContext('2d');
+// world x from 4400 to 5800 (seam at 5120), y from 1100 to 1800
+const X0 = 4400, Y0 = 1100, CH = L.CH;
+for (const off of [-L.Wpx, 0, L.Wpx]) {
+  for (let cy = 0; cy < L.chunksY; cy++) for (let cx = 0; cx < L.chunksX; cx++) {
+    const wx = cx * CH + off, wy = cy * CH;
+    if (wx + CH < X0 || wx > X0 + 1400 || wy + CH < Y0 || wy > Y0 + 700) continue;
+    g.drawImage(L.getChunk(cx, cy), wx - X0, wy - Y0);
+  }
+}
+g.strokeStyle = '#ff0'; g.beginPath(); g.moveTo(5120 - X0, 0); g.lineTo(5120 - X0, 700); g.stroke();
+// grid classification along vertical lines just either side of the seam
+const names = Object.fromEntries(Object.entries(T).map(([k, v]) => [v, k[0]]));
+const col = (px) => { let s = ''; for (let y = Y0; y < Y0 + 700; y += 16) s += names[L.tileAt(px, y)]; return s; };
+document.getElementById('out').textContent = 'overhang ' + L.overhang + '\nx=5100: ' + col(5100) + '\nx=  20: ' + col(20) + '\nx=5000: ' + col(5000) + '\nx= 120: ' + col(120);
+</script>
+</body></html>

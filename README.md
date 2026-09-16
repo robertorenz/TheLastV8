@@ -61,6 +61,11 @@ js/game.js      physics, collisions, rendering, HUD, modals, speech
 - Voice lines ("Return to base immediately") use the Web Speech API when the browser has an English voice.
 - The dashboard is DOM: an SVG speed gauge, fuel and radiation bars, the countdown, score, cars and a live sector map.
 
+## Developer notes
+
+- `index.html?sector=N&at=x,y&dir=deg` jumps straight into sector N with the car at tile (x, y) — handy for checking a spot on a map.
+- `dev-seam.html` renders the raw Riverlands map chunks around the wrap seam with the collision rows either side of it.
+
 ## Credits
 
 Original game by David Darling and Rob Hubbard (Mastertronic, 1985). This remake is a fan project and is not affiliated with the original publishers.

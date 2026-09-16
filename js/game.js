@@ -1043,5 +1043,14 @@
   }
 
   showTitle();
+  // Dev hook: ?sector=N&at=x,y[&dir=deg] jumps straight into a sector with the car at a tile position.
+  const qs = new URLSearchParams(location.search);
+  if (qs.has("sector")) {
+    const i = clamp((parseInt(qs.get("sector"), 10) || 1) - 1, 0, LEVELS.length - 1);
+    G.levelIndex = i; G.loop = 1; G.lives = START_LIVES; G.score = 0; prepareLevel(i);
+    if (qs.has("at")) { const [ax, ay] = qs.get("at").split(",").map(Number); G.car.x = (ax + 0.5) * TILE; G.car.y = (ay + 0.5) * TILE; }
+    if (qs.has("dir")) G.car.angle = Number(qs.get("dir")) * Math.PI / 180;
+    snapCamera(); hideModal(); G.state = "play"; last = performance.now();
+  }
   requestAnimationFrame(frame);
 })();

@@ -39,31 +39,38 @@
   }
 
   // ---- painting ----
-  function paintRoads(g, geo, P, withDashes) {
-    g.lineCap = 'round'; g.lineJoin = 'round';
-    if (P) { g.strokeStyle = P.roadEdge; for (const r of geo.roads) { trace(g, r.pts); g.lineWidth = r.w + 5; g.stroke(); } }
-    g.strokeStyle = P ? P.road : '#000';
-    for (const r of geo.roads) { trace(g, r.pts); g.lineWidth = r.w; g.stroke(); }
-    if (withDashes) {
-      g.setLineDash([26, 22]); g.strokeStyle = P.dash; g.lineWidth = 3;
-      for (const r of geo.roads) if (r.dashed) { trace(g, r.pts); g.stroke(); }
-      g.setLineDash([]);
-    }
+  function paintRoadEdges(g, geo, P) {
+    g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = P.roadEdge;
+    for (const r of geo.roads) { trace(g, r.pts); g.lineWidth = r.w + 5; g.stroke(); }
   }
-  function paintWater(g, geo, P) {
+  function paintRoadFills(g, geo, P) {
+    g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = P ? P.road : '#000';
+    for (const r of geo.roads) { trace(g, r.pts); g.lineWidth = r.w; g.stroke(); }
+  }
+  function paintRoadDashes(g, geo, P) {
+    g.lineCap = 'butt'; g.setLineDash([26, 22]); g.strokeStyle = P.dash; g.lineWidth = 3;
+    for (const r of geo.roads) if (r.dashed) { trace(g, r.pts); g.stroke(); }
+    g.setLineDash([]);
+  }
+  function paintShores(g, geo, P) {
+    g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = P.shore;
+    for (const l of geo.lakes) { trace(g, l, true); g.lineWidth = 5; g.stroke(); }
+    if (geo.river) { trace(g, geo.river.pts); g.lineWidth = geo.river.w + 5; g.stroke(); }
+  }
+  function paintWaterFills(g, geo, P) {
     g.lineCap = 'round'; g.lineJoin = 'round';
-    if (P) {
-      g.strokeStyle = P.shore; g.lineWidth = 4;
-      for (const l of geo.lakes) { trace(g, l, true); g.lineWidth = 5; g.stroke(); }
-      if (geo.river) { trace(g, geo.river.pts); g.lineWidth = geo.river.w + 5; g.stroke(); }
-    }
     g.fillStyle = g.strokeStyle = P ? P.water : '#000';
     for (const l of geo.lakes) { trace(g, l, true); g.fill(); }
     if (geo.river) { trace(g, geo.river.pts); g.lineWidth = geo.river.w; g.stroke(); }
-    if (P && geo.river) { // a darker thread down the middle of the river
-      g.strokeStyle = P.waterDeep; g.lineWidth = geo.river.w * 0.35; trace(g, geo.river.pts); g.stroke();
-    }
   }
+  function paintRiverThread(g, geo, P) {
+    if (!geo.river) return;
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    g.strokeStyle = P.waterDeep; g.lineWidth = geo.river.w * 0.35; trace(g, geo.river.pts); g.stroke();
+  }
+  // classification-only helpers (black, no edges)
+  function paintRoads(g, geo) { paintRoadFills(g, geo, null); }
+  function paintWater(g, geo) { paintWaterFills(g, geo, null); }
   function paintBridges(g, geo, P) {
     g.lineCap = 'butt';
     for (const b of geo.bridges) {
@@ -133,16 +140,19 @@
   }
 
   // Full display paint of the scene (in world px) within bounds; P is the palette.
-  function paintDisplay(g, L, bounds) {
-    const P = L.palette, geo = L.geo;
-    paintRoads(g, geo, P, true);
-    paintWater(g, geo, P);
-    paintBridges(g, geo, P);
-    paintHedges(g, geo, P);
-    for (const b of geo.buildings) if (inBounds(bounds, b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) paintBuilding(g, b, P);
-    for (const d of L.decor) if (inBounds(bounds, d.x, d.y, 6)) paintDecor(g, d, P);
-    for (const t of L.trees) if (inBounds(bounds, t.x, t.y, t.r + 4)) paintTree(g, t, P);
-  }
+  const DISPLAY_LAYERS = [
+    (g, L) => paintRoadEdges(g, L.geo, L.palette),
+    (g, L) => paintRoadFills(g, L.geo, L.palette),
+    (g, L) => paintRoadDashes(g, L.geo, L.palette),
+    (g, L) => paintShores(g, L.geo, L.palette),
+    (g, L) => paintWaterFills(g, L.geo, L.palette),
+    (g, L) => paintRiverThread(g, L.geo, L.palette),
+    (g, L) => paintBridges(g, L.geo, L.palette),
+    (g, L) => paintHedges(g, L.geo, L.palette),
+    (g, L, b) => { for (const bd of L.geo.buildings) if (inBounds(b, bd.x + bd.w / 2, bd.y + bd.h / 2, Math.max(bd.w, bd.h))) paintBuilding(g, bd, L.palette); },
+    (g, L, b) => { for (const d of L.decor) if (inBounds(b, d.x, d.y, 6)) paintDecor(g, d, L.palette); },
+    (g, L, b) => { for (const t of L.trees) if (inBounds(b, t.x, t.y, t.r + 4)) paintTree(g, t, L.palette); },
+  ];
 
   function overhangOf(geo, Wpx) {
     let over = 0;
@@ -173,8 +183,8 @@
       const d = g.getImageData(0, 0, gw, gh).data;
       for (let i = 0; i < gw * gh; i++) if (d[i * 4 + 3] > 100) grid[i] = value;
     };
-    pass((c) => paintRoads(c, geo, null, false), T.ROAD);
-    pass((c) => paintWater(c, geo, null), T.WATER);
+    pass((c) => paintRoads(c, geo), T.ROAD);
+    pass((c) => paintWater(c, geo), T.WATER);
     pass((c) => paintBridges(c, geo, null), T.BRIDGE);
     pass((c) => { paintHedges(c, geo, null); for (const b of geo.buildings) paintBuilding(c, b, null); }, T.WALL);
     const e = def.exit;
@@ -237,11 +247,13 @@
     const r = mulberry32(cx * 131 + cy * 7 + 1);
     g.fillStyle = P.grassDark; for (let i = 0; i < 240; i++) g.fillRect((r() * CH) | 0, (r() * CH) | 0, 2, 2);
     g.fillStyle = P.grassLight; for (let i = 0; i < 90; i++) g.fillRect((r() * CH) | 0, (r() * CH) | 0, 2, 1);
-    const offsets = L.wrap ? [-L.Wpx, 0, L.Wpx] : [0];
-    for (const off of offsets) {
-      if (wx + CH < off - L.overhang || wx > off + L.Wpx + L.overhang) continue; // this copy of the world reaches into the chunk
-      g.setTransform(1, 0, 0, 1, off - wx, -wy);
-      paintDisplay(g, L, { x0: wx - off - 48, y0: wy - 48, x1: wx - off + CH + 48, y1: wy + CH + 48 });
+    // Only the copies of the world that actually reach this chunk (roads may be authored past the seam).
+    const offsets = (L.wrap ? [-L.Wpx, 0, L.Wpx] : [0]).filter((off) => !(wx + CH < off - L.overhang || wx > off + L.Wpx + L.overhang));
+    for (const layer of DISPLAY_LAYERS) {
+      for (const off of offsets) {
+        g.setTransform(1, 0, 0, 1, off - wx, -wy);
+        layer(g, L, { x0: wx - off - 48, y0: wy - 48, x1: wx - off + CH + 48, y1: wy + CH + 48 });
+      }
     }
     g.setTransform(1, 0, 0, 1, 0, 0);
     return cv;
