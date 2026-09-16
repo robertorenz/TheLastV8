@@ -24,7 +24,7 @@ On desktop the game view fills every pixel between the top bar and the dashboard
 
 Pick a sector from the mission-select screen (each card shows a rendered preview of the map). Ten sectors, each with its own countdown:
 
-1. **Riverlands** — modelled on the original's surface map at the original's proportions (the whole valley is about 2½ screens wide, the car about a third of the road). One road from start to base: it runs off the east edge, comes back in from the west at the same height, and each time it does it turns down a level — highway, upper winding road, lower winding road, then over the river and along the bottom to the tunnel. Lakes, farmhouses, a crop field, three bridges and a loop off the upper road, as in the picture.
+1. **Riverlands** — modelled on the original's surface map at the original's proportions (the valley is a few screens wide and the roads about five car widths). One road from start to base: it runs off the east edge, comes back in from the west at the same height, and each time it does it turns down a level — highway, upper winding road, lower winding road, then over the river and along the bottom to the tunnel. Lakes, farmhouses, a crop field, three bridges and a loop off the upper road, as in the picture.
 2. **Sci-Base** — modelled on the original's underground map: eleven stacked corridor zones (A at the bottom, K at the top) between bevelled machinery blocks, with zone names and arrows painted on the deck.
 3. **The Wasteland** — surface run through the ruins. Background radiation climbs the whole time.
 4. **The Base** — underground corridors sealed by blast doors on automatic cycles.
