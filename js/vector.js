@@ -26,14 +26,16 @@
   const trace = (g, pts, close) => { g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]); if (close) g.closePath(); };
   const inBounds = (b, x, y, m) => !b || (x + m >= b.x0 && x - m <= b.x1 && y + m >= b.y0 && y - m <= b.y1);
 
-  function prepareGeometry(def) {
-    const s = (v) => v * TILE;
+  // Geometry in the level's own tile unit (px per tile); the game's TILE is only used for its tile-space fields.
+  function prepareGeometry(def, unit) {
+    const s = (v) => v * unit;
     return {
-      roads: (def.roads || []).map((r) => ({ w: s(r.w), dashed: !!r.dashed, pts: smoothPath(r.pts, r.loop, def.w) })),
-      river: def.river ? { w: s(def.river.w), pts: smoothPath(def.river.pts, true, def.w) } : null,
-      lakes: (def.lakes || []).map((l) => smoothLoop(l)),
+      unit,
+      roads: (def.roads || []).map((r) => ({ w: s(r.w), dashed: !!r.dashed, pts: smoothPath(r.pts, r.loop, def.w, unit) })),
+      river: def.river ? { w: s(def.river.w), pts: smoothPath(def.river.pts, true, def.w, unit) } : null,
+      lakes: (def.lakes || []).map((l) => smoothLoop(l, unit)),
       bridges: (def.bridges || []).map((b) => ({ w: s(b.w), a: [s(b.pts[0][0]), s(b.pts[0][1])], b: [s(b.pts[1][0]), s(b.pts[1][1])] })),
-      hedges: (def.hedges || []).map((h) => smoothPath(h, false)),
+      hedges: (def.hedges || []).map((h) => ({ w: unit * 0.6, pts: smoothPath(h, false, undefined, unit) })),
       buildings: (def.buildings || []).map((b) => ({ kind: b.kind, x: s(b.x), y: s(b.y), w: s(b.w), h: s(b.h) })),
     };
   }
@@ -89,15 +91,19 @@
   }
   function paintHedges(g, geo, P) {
     g.lineCap = 'round'; g.lineJoin = 'round';
-    g.strokeStyle = P ? P.hedge : '#000'; g.lineWidth = TILE * 0.6;
-    for (const h of geo.hedges) { trace(g, h); g.stroke(); }
+    g.strokeStyle = P ? P.hedge : '#000';
+    for (const h of geo.hedges) { trace(g, h.pts); g.lineWidth = h.w; g.stroke(); }
     if (!P) return;
     g.fillStyle = P.hedgeLight;
-    for (const h of geo.hedges) for (let i = 0; i < h.length; i += 2) circle(g, h[i][0] + ((i >> 1) % 2 ? 3 : -3), h[i][1] + ((i >> 1) % 3 - 1) * 3, 4);
+    for (const h of geo.hedges) { const r = h.w * 0.22, o = h.w * 0.16; for (let i = 0; i < h.pts.length; i += 2) circle(g, h.pts[i][0] + ((i >> 1) % 2 ? o : -o), h.pts[i][1] + ((i >> 1) % 3 - 1) * o, r); }
   }
-  function paintBuilding(g, b, P) {
+  function paintBuilding(g, b, P, k) { // k: detail scale (1 at 32px tiles)
     const { x, y, w, h } = b;
     if (!P) { g.fillStyle = '#000'; g.fillRect(x, y, w, h); return; }
+    g.save(); g.translate(x, y); g.scale(k, k); paintBuildingDetail(g, { x: 0, y: 0, w: w / k, h: h / k, kind: b.kind }, P); g.restore();
+  }
+  function paintBuildingDetail(g, b, P) {
+    const { x, y, w, h } = b;
     g.fillStyle = 'rgba(0,0,0,0.28)'; g.fillRect(x + 5, y + 5, w, h);
     if (b.kind === 'house') {
       g.fillStyle = P.wallWhite; g.fillRect(x, y, w, h);
@@ -158,7 +164,7 @@
     (g, L) => paintRiverThread(g, L.geo, L.palette),
     (g, L) => paintBridges(g, L.geo, L.palette),
     (g, L) => paintHedges(g, L.geo, L.palette),
-    (g, L, b) => { for (const bd of L.geo.buildings) if (inBounds(b, bd.x + bd.w / 2, bd.y + bd.h / 2, Math.max(bd.w, bd.h))) paintBuilding(g, bd, L.palette); },
+    (g, L, b) => { for (const bd of L.geo.buildings) if (inBounds(b, bd.x + bd.w / 2, bd.y + bd.h / 2, Math.max(bd.w, bd.h))) paintBuilding(g, bd, L.palette, L.unit / TILE); },
     (g, L, b) => { for (const d of L.decor) if (inBounds(b, d.x, d.y, 6)) paintDecor(g, d, L.palette); },
     (g, L, b) => { for (const t of L.trees) if (inBounds(b, t.x, t.y, t.r + 4)) paintTree(g, t, L.palette); },
   ];
@@ -169,17 +175,18 @@
     for (const r of geo.roads) pts(r.pts);
     if (geo.river) pts(geo.river.pts);
     for (const l of geo.lakes) pts(l);
-    for (const h of geo.hedges) pts(h);
+    for (const h of geo.hedges) pts(h.pts);
     for (const b of geo.bridges) { pts([b.a, b.b]); }
     for (const b of geo.buildings) over = Math.max(over, b.x + b.w - Wpx, -b.x);
-    return over + 2 * TILE;
+    return over + 2 * geo.unit;
   }
 
   function buildVectorLevel(def) {
-    const w = def.w, h = def.h, cell = def.cell || 8, Wpx = w * TILE, Hpx = h * TILE;
+    const unit = def.unit || TILE, gs = unit / TILE; // gs converts level tiles to the game's 32px tile space
+    const w = def.w, h = def.h, cell = def.cell || 8, Wpx = w * unit, Hpx = h * unit;
     const gw = Math.ceil(Wpx / cell), gh = Math.ceil(Hpx / cell);
     const grid = new Uint8Array(gw * gh).fill(T.ROUGH);
-    const geo = prepareGeometry(def);
+    const geo = prepareGeometry(def, unit);
     const offsets = def.wrap ? [-Wpx, 0, Wpx] : [0];
     const P = MEADOW;
 
@@ -197,7 +204,7 @@
     pass((c) => paintBridges(c, geo, null), T.BRIDGE);
     pass((c) => { paintHedges(c, geo, null); for (const b of geo.buildings) paintBuilding(c, b, null); }, T.WALL);
     const e = def.exit;
-    for (let y = Math.floor(e[1] * TILE / cell); y < Math.ceil((e[3] + 1) * TILE / cell); y++) for (let x = Math.floor(e[0] * TILE / cell); x < Math.ceil((e[2] + 1) * TILE / cell); x++) if (x >= 0 && y >= 0 && x < gw && y < gh) grid[y * gw + x] = T.EXIT;
+    for (let y = Math.floor(e[1] * unit / cell); y < Math.ceil((e[3] + 1) * unit / cell); y++) for (let x = Math.floor(e[0] * unit / cell); x < Math.ceil((e[2] + 1) * unit / cell); x++) if (x >= 0 && y >= 0 && x < gw && y < gh) grid[y * gw + x] = T.EXIT;
 
     const wrapX = (px) => def.wrap ? ((px % Wpx) + Wpx) % Wpx : px;
     const wrapDelta = (dx) => { if (!def.wrap) return dx; dx = ((dx % Wpx) + Wpx) % Wpx; return dx > Wpx / 2 ? dx - Wpx : dx; };
@@ -212,8 +219,8 @@
     const clear = (x, y, r) => { for (let yy = y - r; yy <= y + r; yy += cell) for (let xx = x - r; xx <= x + r; xx += cell) if (tileAt(xx, yy) !== T.ROUGH) return false; return true; };
     for (let n = 0; n < want * 8 && trees.length < want; n++) {
       const x = rnd() * Wpx, y = 12 + rnd() * (Hpx - 24), k = rnd(), kind = k < 0.5 ? 0 : k < 0.8 ? 1 : 2;
-      const r = kind === 0 ? 8 + rnd() * 4 : kind === 1 ? 11 + rnd() * 5 : 5 + rnd() * 3;
-      if (!clear(x, y, r + 14)) continue;
+      const rk = Math.max(0.55, gs), r = (kind === 0 ? 8 + rnd() * 4 : kind === 1 ? 11 + rnd() * 5 : 5 + rnd() * 3) * rk;
+      if (!clear(x, y, r + 10)) continue;
       if (trees.some((t) => Math.hypot(wrapDelta(t.x - x), t.y - y) < t.r + r + 6)) continue;
       trees.push({ x, y, r, kind });
       for (let yy = Math.floor((y - r) / cell); yy <= Math.floor((y + r) / cell); yy++) for (let xx = Math.floor((x - r) / cell); xx <= Math.floor((x + r) / cell); xx++) {
@@ -223,19 +230,23 @@
       }
     }
     const decor = [];
-    for (let n = 0; n < 900; n++) { const x = rnd() * Wpx, y = rnd() * Hpx; if (tileAt(x, y) !== T.ROUGH) continue; decor.push({ x, y, k: Math.floor(rnd() * 4) }); }
+    for (let n = 0; n < Math.round(900 * gs * gs); n++) { const x = rnd() * Wpx, y = rnd() * Hpx; if (tileAt(x, y) !== T.ROUGH) continue; decor.push({ x, y, k: Math.floor(rnd() * 4) }); }
 
+    // Tile-space fields for the game (it multiplies by TILE and adds half a tile): x/32 - 0.5 lands exactly on px x.
+    const tileOf = (px) => px / TILE - 0.5;
     const checkpoints = def.checkpoints.map((c, i) => {
-      const half = ((c.len || 3.4) * TILE) / 2, d = c.dir * Math.PI / 180, nx = -Math.sin(d), ny = Math.cos(d), cx = c.x * TILE, cy = c.y * TILE;
-      return { id: i, x: c.x - 0.5, y: c.y - 0.5, dir: c.dir, seg: { ax: cx - nx * half, ay: cy - ny * half, bx: cx + nx * half, by: cy + ny * half }, tiles: [], taken: false };
+      const half = ((c.len || 3.4) * unit) / 2, d = c.dir * Math.PI / 180, nx = -Math.sin(d), ny = Math.cos(d), cx = c.x * unit, cy = c.y * unit;
+      return { id: i, x: tileOf(cx), y: tileOf(cy), dir: c.dir, seg: { ax: cx - nx * half, ay: cy - ny * half, bx: cx + nx * half, by: cy + ny * half }, tiles: [], taken: false };
     });
-    const fuel = def.fuel.map(([x, y]) => ({ x: (x + 0.5) * TILE, y: (y + 0.5) * TILE, tx: x, ty: y, taken: false }));
-    const wrecks = def.wrecks.map(([x, y, a]) => ({ x: (x + 0.5) * TILE, y: (y + 0.5) * TILE, a, r: 11, smoke: Math.random() }));
+    const fuel = def.fuel.map(([x, y]) => ({ x: x * unit, y: y * unit, tx: x * gs, ty: y * gs, taken: false }));
+    const wrecks = def.wrecks.map(([x, y, a]) => ({ x: x * unit, y: y * unit, a, r: 11, smoke: Math.random() }));
+    // exit as a game tile rect: the game draws (e2 - e0 + 1) tiles wide, so encode the far edge minus one tile
+    const exit = [e[0] * gs, e[1] * gs, (e[2] + 1) * gs - 1, (e[3] + 1) * gs - 1];
 
     const L = {
-      def, kind: 'vector', wrap: !!def.wrap, w, h, Wpx, Hpx, cell, gw, gh, grid, geo, trees, decor, palette: P,
+      def, kind: 'vector', wrap: !!def.wrap, unit, w: w * gs, h: h * gs, Wpx, Hpx, cell, gw, gh, grid, geo, trees, decor, palette: P,
       tileAt, get: (tx, ty) => tileAt((tx + 0.5) * TILE, (ty + 0.5) * TILE),
-      checkpoints, doors: [], fuel, wrecks, exit: def.exit, start: def.start, theme: def.theme,
+      checkpoints, doors: [], fuel, wrecks, exit, start: { x: tileOf(def.start.x * unit), y: tileOf(def.start.y * unit), dir: def.start.dir }, theme: def.theme,
       chunksX: Math.ceil(Wpx / CH), chunksY: Math.ceil(Hpx / CH), CH, chunks: new Map(), overhang: overhangOf(geo, Wpx),
     };
     L.getChunk = (cx, cy) => {

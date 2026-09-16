@@ -15,14 +15,17 @@
       // (floats allowed); x may run past w so a road can wrap and then curve into another.
       kind: 'vector',
       wrap: true,
-      cell: 8,
+      unit: 12,        // px per tile: the whole valley is 1920 x 768 px, about 2.5 views wide like the C64 original
+      cell: 6,         // collision cell in px
+      zoom: 1.3,       // view zoom: the car and the road fill the screen the way the original did
+      speedScale: 0.75,
       name: 'Riverlands',
       subtitle: 'Surface run',
       tagline: 'Winding roads, a river, and a world that loops',
       preview: { x: 76, y: 44 },
       theme: 'meadow',
       w: 160, h: 64,
-      time: 80,
+      time: 45,
       ambientRad: 0.4,
       briefing: 'The last V8 is parked on the highway with the tank full. The base is a tunnel mouth on the far side of the river, and the valley loops: every road that runs off the east edge comes back in from the west. Grass is slow but survivable; trees, hedges, houses and water are not.',
       start: { x: 148, y: 12, dir: 0 },
@@ -75,7 +78,7 @@
       ],
       wrecks: [[90, 11.4, 0.3], [118, 13.6, 1.9], [66, 41.2, 0.7], [30, 58.8, 2.4]],
       doors: [],
-      trees: { count: 320, seed: 7 },
+      trees: { count: 120, seed: 7 },
     },
     {
       name: 'The Wasteland',
@@ -332,19 +335,19 @@
 
   // Catmull-Rom sampling of a control polyline (tile units) into a dense polyline in pixels.
   // loop + period: the first and last points coincide modulo period (a road that wraps round the world).
-  function smoothPath(pts, loop, period) {
+  function smoothPath(pts, loop, period, unit = TILE) {
     const n = pts.length;
-    if (n < 2) return pts.map((p) => [p[0] * TILE, p[1] * TILE]);
+    if (n < 2) return pts.map((p) => [p[0] * unit, p[1] * unit]);
     const ext = loop && period
       ? [[pts[n - 2][0] - period, pts[n - 2][1]], ...pts, [pts[1][0] + period, pts[1][1]]]
       : [pts[0], ...pts, pts[n - 1]];
-    return sampleCatmull(ext, false);
+    return sampleCatmull(ext, false, unit);
   }
-  function smoothLoop(pts) {
+  function smoothLoop(pts, unit = TILE) {
     const n = pts.length;
-    return sampleCatmull([pts[n - 1], ...pts, pts[0], pts[1]], true);
+    return sampleCatmull([pts[n - 1], ...pts, pts[0], pts[1]], true, unit);
   }
-  function sampleCatmull(ext, closed) {
+  function sampleCatmull(ext, closed, unit = TILE) {
     const out = [], steps = 8;
     for (let i = 1; i < ext.length - 2; i++) {
       const p0 = ext[i - 1], p1 = ext[i], p2 = ext[i + 1], p3 = ext[i + 2];
@@ -352,10 +355,10 @@
         const t = s / steps, t2 = t * t, t3 = t2 * t;
         const x = 0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
         const y = 0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
-        out.push([x * TILE, y * TILE]);
+        out.push([x * unit, y * unit]);
       }
     }
-    if (!closed) { const last = ext[ext.length - 2]; out.push([last[0] * TILE, last[1] * TILE]); }
+    if (!closed) { const last = ext[ext.length - 2]; out.push([last[0] * unit, last[1] * unit]); }
     return out;
   }
 

@@ -61,6 +61,7 @@
     particles: [], cam: { x: 0, y: 0 }, shake: 0, t: 0, flash: 0, flashColor: '255,255,255',
     crashTimer: 0, crashReason: '', completeTimer: 0, completeShown: false, bonus: 0,
     said: {}, lastBeep: -1, fuelOutTimer: 0, respawn: null, attract: 0,
+    zoom: 1, vw: W, vh: H, speedScale: 1, // per-level view zoom (world px shown = W/zoom x H/zoom) and physics scale
   };
   const keys = { up: false, down: false, left: false, right: false };
   let modalPrimary = null;
@@ -259,15 +260,16 @@
   function prepareLevel(i) {
     const def = LEVELS[i];
     G.level = buildAny(def); G.pal = PALETTES[def.theme]; G.atlas = def.kind === 'vector' ? null : makeAtlas(def.theme); G.mini = makeMinimap(G.level);
+    G.zoom = def.zoom || 1; G.vw = W / G.zoom; G.vh = H / G.zoom; G.speedScale = def.speedScale || 1;
     G.t = 0; G.particles = []; G.said = {}; G.lastBeep = -1; G.fuelOutTimer = 0; G.shake = 0; G.flash = 0; G.completeShown = false;
     G.timeLeft = Math.round(def.time * timeScale()); G.levelStartScore = G.score;
-    G.respawn = { x: def.start.x, y: def.start.y, dir: def.start.dir };
-    G.car = makeCar(def.start);
+    G.respawn = { x: G.level.start.x, y: G.level.start.y, dir: G.level.start.dir };
+    G.car = makeCar(G.level.start);
     snapCamera();
     ui.sector.textContent = `Sector ${i + 1} · ${def.name}` + (G.loop > 1 ? ` · Loop ${G.loop}` : '');
   }
   function snapCamera() { G.cam.x = G.car.x; G.cam.y = G.car.y; clampCamera(); }
-  function clampCamera() { const L = G.level; G.cam.x = L.wrap ? wrapX(G.cam.x) : clamp(G.cam.x, W / 2, L.w * TILE - W / 2); G.cam.y = clamp(G.cam.y, H / 2, L.h * TILE - H / 2); }
+  function clampCamera() { const L = G.level; G.cam.x = L.wrap ? wrapX(G.cam.x) : clamp(G.cam.x, G.vw / 2, Math.max(G.vw / 2, L.w * TILE - G.vw / 2)); G.cam.y = clamp(G.cam.y, G.vh / 2, Math.max(G.vh / 2, L.h * TILE - G.vh / 2)); }
 
   // ---------- modal ----------
   function showModal({ kicker = '', title, body = '', actions = [], wide = false }) {
@@ -319,8 +321,10 @@
     const saved = { ctx, level: G.level, atlas: G.atlas, pal: G.pal, car: G.car, cam: G.cam, state: G.state };
     const p = def.preview || def.start;
     const PS = 0.75, vw = W / PS * 0.5, vh = H / PS * 0.5; // preview shows a closer crop than the game view
-    const cam = { x: clamp((p.x + 0.5) * TILE, vw, level.w * TILE - vw), y: clamp((p.y + 0.5) * TILE, vh, level.h * TILE - vh) };
-    ctx = cv.getContext('2d'); G.level = level; G.atlas = atlas; G.pal = pal; G.cam = cam; G.car = makeCar(def.start); G.state = 'preview';
+    const u = level.unit, px = u ? p.x * u : (p.x + 0.5) * TILE, py = u ? p.y * u : (p.y + 0.5) * TILE; // preview points are in the level's own tiles
+    const cam = { x: level.wrap ? px : clamp(px, vw, level.w * TILE - vw), y: clamp(py, vh, level.h * TILE - vh) };
+    const savedView = { vw: G.vw, vh: G.vh };
+    ctx = cv.getContext('2d'); G.level = level; G.atlas = atlas; G.pal = pal; G.cam = cam; G.car = makeCar(level.start); G.state = 'preview'; G.vw = vw * 2; G.vh = vh * 2;
     ctx.setTransform(PS, 0, 0, PS, 0, 0);
     ctx.fillStyle = pal.bg; ctx.fillRect(0, 0, W, H);
     const ox = Math.round(vw - cam.x), oy = Math.round(vh - cam.y);
@@ -330,7 +334,7 @@
     if (Math.abs(G.car.x - cam.x) < vw && Math.abs(G.car.y - cam.y) < vh) drawCar();
     ctx.restore();
     ctx.setTransform(0.5, 0, 0, 0.5, 0, 0); ctx.drawImage(vignette, 0, 0);
-    ctx = saved.ctx; G.level = saved.level; G.atlas = saved.atlas; G.pal = saved.pal; G.car = saved.car; G.cam = saved.cam; G.state = saved.state;
+    ctx = saved.ctx; G.level = saved.level; G.atlas = saved.atlas; G.pal = saved.pal; G.car = saved.car; G.cam = saved.cam; G.state = saved.state; G.vw = savedView.vw; G.vh = savedView.vh;
     previews[i] = cv;
     return cv;
   }
@@ -566,7 +570,7 @@
     G.shake = Math.max(0, G.shake - 45 * dt);
     G.flash = Math.max(0, G.flash - 2.2 * dt);
     const on = (G.state === 'play' || G.state === 'levelcomplete') && c.visible;
-    Snd.setEngine(Math.abs(c.speed) / TOP_SPEED, c.throttle, on, c.skid);
+    Snd.setEngine(Math.abs(c.speed) / (TOP_SPEED * G.speedScale), c.throttle, on, c.skid);
   }
 
   function updateCar(dt) {
@@ -577,20 +581,21 @@
     const under = L.tileAt(c.x, c.y);
     const rough = under === T.ROUGH, dirt = under === T.DIRT;
 
-    if (throttle) c.speed += (rough ? 260 : dirt ? 340 : 400) * dt;
-    if (brake) c.speed -= (c.speed > 0 ? 560 : 220) * dt;
+    const ps = G.speedScale;
+    if (throttle) c.speed += (rough ? 260 : dirt ? 340 : 400) * ps * dt;
+    if (brake) c.speed -= (c.speed > 0 ? 560 : 220) * ps * dt;
     c.speed -= c.speed * (rough ? 2.4 : dirt ? 0.85 : 0.55) * dt;
     if (!throttle && !brake && Math.abs(c.speed) < 3) c.speed = 0;
-    c.speed = clamp(c.speed, -150, rough ? 190 : dirt ? 340 : TOP_SPEED);
+    c.speed = clamp(c.speed, -150 * ps, (rough ? 190 : dirt ? 340 : TOP_SPEED) * ps);
 
     // Steering ramps in over ~0.1s so a tap nudges and a held key swings the car round.
     c.steerAmt += (steer - c.steerAmt) * Math.min(1, dt * 12);
-    const sfac = Math.min(1, 0.3 + Math.abs(c.speed) / 200);
+    const sfac = Math.min(1, 0.3 + Math.abs(c.speed) / (200 * ps));
     c.angle += c.steerAmt * 2.7 * sfac * dt * (c.speed < 0 ? -1 : 1);
     c.x = wrapX(c.x + Math.cos(c.angle) * c.speed * dt);
     c.y += Math.sin(c.angle) * c.speed * dt;
     c.fuel = Math.max(0, c.fuel - (0.35 + throttle * 1.45) * dt);
-    c.throttle = throttle; c.brake = brake; c.steer = steer; c.skid = steer !== 0 && Math.abs(c.speed) > 250;
+    c.throttle = throttle; c.brake = brake; c.steer = steer; c.skid = steer !== 0 && Math.abs(c.speed) > 250 * ps;
 
     if (c.fuel <= 0 && Math.abs(c.speed) < 5) { G.fuelOutTimer += dt; if (G.fuelOutTimer > 2) return crash('fuel'); }
     else G.fuelOutTimer = 0;
@@ -728,7 +733,7 @@
   }
   function updateWreckSmoke(dt) {
     for (const wk of G.level.wrecks) {
-      if (Math.abs(wrapDelta(wk.x - G.cam.x)) > W / 2 + 40 || Math.abs(wk.y - G.cam.y) > H / 2 + 40) continue;
+      if (Math.abs(wrapDelta(wk.x - G.cam.x)) > G.vw / 2 + 40 || Math.abs(wk.y - G.cam.y) > G.vh / 2 + 40) continue;
       wk.smoke -= dt;
       if (wk.smoke <= 0) { wk.smoke = 0.35 + Math.random() * 0.4; G.particles.push({ type: 'smoke', x: wk.x + (Math.random() - 0.5) * 10, y: wk.y + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 8, vy: -12 - Math.random() * 10, life: 1.6, max: 1.6, size: 3, grow: 14, color: '90,90,90', alpha: 0.35 }); }
     }
@@ -736,11 +741,12 @@
 
   // ---------- render ----------
   function render() {
-    ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+    const kx = canvas.width / W, ky = canvas.height / H;
+    ctx.setTransform(kx * G.zoom, 0, 0, ky * G.zoom, 0, 0); // world space: the view is vw x vh world px
     const L = G.level, P = G.pal;
     const sx = (Math.random() - 0.5) * G.shake, sy = (Math.random() - 0.5) * G.shake;
-    const ox = Math.round(W / 2 - G.cam.x + sx), oy = Math.round(H / 2 - G.cam.y + sy);
-    ctx.fillStyle = P.bg; ctx.fillRect(0, 0, W, H);
+    const ox = Math.round(G.vw / 2 - G.cam.x + sx), oy = Math.round(G.vh / 2 - G.cam.y + sy);
+    ctx.fillStyle = P.bg; ctx.fillRect(0, 0, G.vw, G.vh);
     ctx.save(); ctx.translate(ox, oy);
     if (L.kind === 'vector') drawVector(); else drawTiles(ox, oy);
     drawExit(L);
@@ -751,6 +757,7 @@
     drawCar();
     drawParticles();
     ctx.restore();
+    ctx.setTransform(kx, 0, 0, ky, 0, 0); // screen space for overlays
     drawOverlays();
     updateDash();
   }
@@ -758,7 +765,7 @@
   function drawTiles(ox, oy) {
     const L = G.level, A = G.atlas, P = G.pal;
     const x0 = Math.max(0, Math.floor(-ox / TILE)), y0 = Math.max(0, Math.floor(-oy / TILE));
-    const x1 = Math.min(L.w - 1, Math.floor((W - ox) / TILE)), y1 = Math.min(L.h - 1, Math.floor((H - oy) / TILE));
+    const x1 = Math.min(L.w - 1, Math.floor((G.vw - ox) / TILE)), y1 = Math.min(L.h - 1, Math.floor((G.vh - oy) / TILE));
     const radTiles = [], bridgeTiles = [], shoreTiles = [];
     const frame = Math.floor(G.t * 5);
     for (let y = y0; y <= y1; y++) {
@@ -810,8 +817,8 @@
   // Vector levels: blit cached map chunks; the chunk index wraps so the view can straddle the world seam.
   function drawVector() {
     const L = G.level, CH = L.CH;
-    const vx0 = G.cam.x - W / 2, vx1 = G.cam.x + W / 2;
-    const y0 = Math.max(0, Math.floor((G.cam.y - H / 2) / CH)), y1 = Math.min(L.chunksY - 1, Math.floor((G.cam.y + H / 2) / CH));
+    const vx0 = G.cam.x - G.vw / 2, vx1 = G.cam.x + G.vw / 2;
+    const y0 = Math.max(0, Math.floor((G.cam.y - G.vh / 2) / CH)), y1 = Math.min(L.chunksY - 1, Math.floor((G.cam.y + G.vh / 2) / CH));
     for (const off of (L.wrap ? [-L.Wpx, 0, L.Wpx] : [0])) {
       const cx0 = Math.max(0, Math.floor((vx0 - off) / CH)), cx1 = Math.min(L.chunksX - 1, Math.floor((vx1 - off) / CH));
       for (let cy = y0; cy <= y1; cy++) for (let cx = cx0; cx <= cx1; cx++) ctx.drawImage(L.getChunk(cx, cy), cx * CH + off, cy * CH);
@@ -889,7 +896,7 @@
 
   function drawWrecks(L) {
     for (const wk of L.wrecks) {
-      if (Math.abs(wrapDelta(wk.x - G.cam.x)) > W / 2 + 40 || Math.abs(wk.y - G.cam.y) > H / 2 + 40) continue;
+      if (Math.abs(wrapDelta(wk.x - G.cam.x)) > G.vw / 2 + 40 || Math.abs(wk.y - G.cam.y) > G.vh / 2 + 40) continue;
       if (L.theme === 'sci') { // a round support column
         ctx.save(); ctx.translate(rx(wk.x), wk.y);
         ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.arc(3, 3, 12, 0, Math.PI * 2); ctx.fill();
@@ -911,7 +918,7 @@
 
   function drawDoors(L) {
     for (const d of L.doors) {
-      if (Math.abs(d.px + d.pw / 2 - G.cam.x) > W / 2 + 80 || Math.abs(d.py + d.ph / 2 - G.cam.y) > H / 2 + 80) continue;
+      if (Math.abs(d.px + d.pw / 2 - G.cam.x) > G.vw / 2 + 80 || Math.abs(d.py + d.ph / 2 - G.cam.y) > G.vh / 2 + 80) continue;
       const open = d.openAmt > 0.98, closing = d.target === 0;
       // frame posts embedded in the walls at either end
       ctx.fillStyle = '#0b0f14';
@@ -999,7 +1006,7 @@
 
   function updateDash() {
     const c = G.car;
-    const mph = Math.abs(c.speed) * 0.34;
+    const mph = Math.abs(c.speed) * 0.34 / G.speedScale;
     ui.needle.setAttribute('transform', `rotate(${(-120 + 240 * Math.min(1, mph / 140)).toFixed(1)} 60 64)`);
     setText(ui.speedVal, String(Math.round(mph)));
     const fuelW = c.fuel.toFixed(0) + '%';
@@ -1026,10 +1033,10 @@
     for (const d of L.doors) { mctx.fillStyle = d.openAmt > 0.98 ? '#22c55e' : '#ef4444'; mctx.fillRect(mx(d.px), my(d.py), d.pw / TILE * s, d.ph / TILE * s); }
     if (G.state !== 'title') {
       mctx.strokeStyle = 'rgba(230,237,243,0.35)'; mctx.lineWidth = 1;
-      const vx = G.cam.x - W / 2, vw = W / TILE * s, vh = H / TILE * s;
-      mctx.strokeRect(mx(vx) + 0.5, my(G.cam.y - H / 2) + 0.5, vw, vh);
-      if (L.wrap && vx < 0) mctx.strokeRect(mx(vx + L.Wpx) + 0.5, my(G.cam.y - H / 2) + 0.5, vw, vh);
-      if (L.wrap && vx + W > L.Wpx) mctx.strokeRect(mx(vx - L.Wpx) + 0.5, my(G.cam.y - H / 2) + 0.5, vw, vh);
+      const vx = G.cam.x - G.vw / 2, vw = G.vw / TILE * s, vh = G.vh / TILE * s;
+      mctx.strokeRect(mx(vx) + 0.5, my(G.cam.y - G.vh / 2) + 0.5, vw, vh);
+      if (L.wrap && vx < 0) mctx.strokeRect(mx(vx + L.Wpx) + 0.5, my(G.cam.y - G.vh / 2) + 0.5, vw, vh);
+      if (L.wrap && vx + G.vw > L.Wpx) mctx.strokeRect(mx(vx - L.Wpx) + 0.5, my(G.cam.y - G.vh / 2) + 0.5, vw, vh);
       const c = G.car; mctx.fillStyle = '#ff3b1f'; mctx.beginPath(); mctx.arc(mx(wrapX(c.x)), my(c.y), 3, 0, Math.PI * 2); mctx.fill();
     }
   }
@@ -1048,7 +1055,7 @@
   if (qs.has("sector")) {
     const i = clamp((parseInt(qs.get("sector"), 10) || 1) - 1, 0, LEVELS.length - 1);
     G.levelIndex = i; G.loop = 1; G.lives = START_LIVES; G.score = 0; prepareLevel(i);
-    if (qs.has("at")) { const [ax, ay] = qs.get("at").split(",").map(Number); G.car.x = (ax + 0.5) * TILE; G.car.y = (ay + 0.5) * TILE; }
+    if (qs.has("at")) { const [ax, ay] = qs.get("at").split(",").map(Number), u = G.level.unit; G.car.x = u ? ax * u : (ax + 0.5) * TILE; G.car.y = u ? ay * u : (ay + 0.5) * TILE; }
     if (qs.has("dir")) G.car.angle = Number(qs.get("dir")) * Math.PI / 180;
     snapCamera(); hideModal(); G.state = "play"; last = performance.now();
   }

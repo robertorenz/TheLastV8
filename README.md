@@ -24,7 +24,7 @@ On desktop the game view fills every pixel between the top bar and the dashboard
 
 Pick a sector from the mission-select screen (each card shows a rendered preview of the map). Ten sectors, each with its own countdown:
 
-1. **Riverlands** — modelled on the original's surface map: bright grass, winding grey roads, two dashed highways, a river with plank bridges, lakes, farmhouses and a crop field. The world wraps horizontally — keep driving east and you come back round from the west.
+1. **Riverlands** — modelled on the original's surface map at the original's proportions (the whole valley is about 2½ screens wide, the car about a third of the road): bright grass, winding grey roads, two dashed highways, a river with plank bridges, lakes, farmhouses and a crop field. The world wraps horizontally — every road that leaves the east edge comes back in from the west.
 2. **Sci-Base** — modelled on the original's underground map: eleven stacked corridor zones (A at the bottom, K at the top) between bevelled machinery blocks, with zone names and arrows painted on the deck.
 3. **The Wasteland** — surface run through the ruins. Background radiation climbs the whole time.
 4. **The Base** — underground corridors sealed by blast doors on automatic cycles.
@@ -55,7 +55,7 @@ js/game.js      physics, collisions, rendering, HUD, modals, speech
 ```
 
 - Tile levels are authored as axis-aligned road paths (tarmac or dirt) carved into rock, then decorated with grass verges, water, bridges, rough patches, radiation, fuel, checkpoints, wrecks and doors (`js/levels.js`).
-- Vector levels (Riverlands) are authored as smooth Catmull-Rom road splines, lake polygons, a river, bridges, hedges and buildings. The same painting code rasterises an 8-px collision grid and paints the on-screen map in cached 384-px chunks, so what you see is exactly what kills you. Wrap-around levels draw three copies of the world around the seam.
+- Vector levels (Riverlands) are authored as smooth Catmull-Rom road splines, lake polygons, a river, bridges, hedges and buildings, in their own tile unit (`unit` px per tile) with an optional view `zoom` and `speedScale`. The same painting code rasterises an 8-px collision grid and paints the on-screen map in cached 384-px chunks, so what you see is exactly what kills you. Wrap-around levels draw three copies of the world around the seam.
 - Sector previews on the select screen are rendered live from each level's own tile atlas, so they always match what you will drive through.
 - The car is a momentum model: acceleration, braking, drag, speed-dependent steering with ramp-in. Eight body points are tested against the tile grid, door panels and wreck circles every frame.
 - Voice lines ("Return to base immediately") use the Web Speech API when the browser has an English voice.
