@@ -84,6 +84,7 @@
     beep() { blip(880, 0.12, 'square', 0.22); },
     door() { blip(90, 0.3, 'sawtooth', 0.3, 0, 40); noiseBurst(0.18, 500, 0.25); },
     explosion() { noiseBurst(1.4, 2600, 0.9, 120); blip(110, 0.7, 'sine', 0.8, 0, 28); noiseBurst(0.5, 6000, 0.4, 800, 0.05); },
+    splash() { noiseBurst(0.7, 1400, 0.6, 250); blip(220, 0.45, 'sine', 0.5, 0.04, 60); noiseBurst(0.9, 900, 0.25, 200, 0.25); },
     fanfare() { [523, 659, 784, 1047].forEach((f, i) => blip(f, 0.22, 'square', 0.22, i * 0.12)); blip(1047, 0.7, 'square', 0.22, 0.5); blip(1319, 0.7, 'triangle', 0.2, 0.5); },
     fail() { [330, 262, 196, 131].forEach((f, i) => blip(f, 0.4, 'sawtooth', 0.22, i * 0.28)); },
     detonation() { noiseBurst(3, 3000, 1, 60); blip(60, 2.5, 'sine', 0.9, 0, 20); },

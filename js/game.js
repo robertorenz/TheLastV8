@@ -8,7 +8,7 @@
   // ---------- DOM ----------
   const $ = (s) => document.querySelector(s);
   const canvas = $('#game');
-  const ctx = canvas.getContext('2d');
+  let ctx = canvas.getContext('2d'); // swapped to an offscreen context while rendering level previews
   const W = 960, H = 540; // logical view; the backing store follows the on-screen size so the picture stays sharp at any scale
   const DPR = Math.min(2, window.devicePixelRatio || 1);
   function resizeCanvas() {
@@ -45,6 +45,7 @@
   const TOP_SPEED = 410;
   const START_LIVES = 3, MAX_LIVES = 5;
   const PALETTES = {
+    river: { bg: '#2f4a22', wall: '#3a5a2a', wallDeep: '#2f4a22', wallHi: '#4f7a36', wallLo: '#1f3316', kerb: '#8a8378', road: '#3a3a3e', roadNoise: '#46464b', roadDark: '#2e2e32', rough: '#6f9a3c', roughSpeck: '#5a8030', dirt: '#8a6a3c', dirtSpeck: '#6e5330', dirtHi: '#a58453', water: '#1d5f8a', waterDeep: '#164a6e', waterHi: '#4a9bd0', bridge: '#7a5a34', bridgeDark: '#4e381f', bridgeHi: '#9a7848', rad: '#1f5a1a', radGlow: '90,255,58', exit: '#f5a524', label: 'TUNNEL' },
     surface: { bg: '#3b2f21', wall: '#5c4832', wallDeep: '#3b2f21', wallHi: '#7d6547', wallLo: '#2a2016', kerb: '#8f7452', road: '#2a2b2f', roadNoise: '#35363b', roadDark: '#232428', rough: '#8f7a4f', roughSpeck: '#6f5c3a', rad: '#1f5a1a', radGlow: '90,255,58', exit: '#f5a524', label: 'BASE' },
     base: { bg: '#0f151c', wall: '#2b3a4b', wallDeep: '#141c25', wallHi: '#46596d', wallLo: '#0d1217', kerb: '#f5c518', road: '#1b2129', roadNoise: '#242c36', roadDark: '#161b22', rough: '#3a4652', roughSpeck: '#2a343e', rad: '#1f5a1a', radGlow: '90,255,58', exit: '#2dd4bf', label: 'GARAGE' },
     core: { bg: '#1a0c0c', wall: '#4a2020', wallDeep: '#241010', wallHi: '#6e3030', wallLo: '#120606', kerb: '#f08a24', road: '#221616', roadNoise: '#2e1c1c', roadDark: '#1a1010', rough: '#5a3a2a', roughSpeck: '#3e2718', rad: '#1f5a1a', radGlow: '90,255,58', exit: '#f5a524', label: 'VAULT' },
@@ -103,7 +104,34 @@
       if (theme === 'surface') { speckle(g, P.roadNoise, 26, 2); speckle(g, P.roadDark, 14, 2); if (rnd() < 0.5) { g.strokeStyle = P.roadDark; g.lineWidth = 1; g.beginPath(); g.moveTo(rnd() * TILE, 0); g.lineTo(rnd() * TILE, TILE); g.stroke(); } }
       else { g.strokeStyle = P.roadNoise; g.lineWidth = 1; g.strokeRect(0.5, 0.5, TILE - 1, TILE - 1); speckle(g, P.roadDark, 8, 2); g.fillStyle = P.roadNoise; [[3, 3], [TILE - 6, 3], [3, TILE - 6], [TILE - 6, TILE - 6]].forEach(([x, y]) => g.fillRect(x, y, 2, 2)); }
     }));
-    const rough = [0, 1].map(() => mk((g) => { g.fillStyle = P.rough; g.fillRect(0, 0, TILE, TILE); speckle(g, P.roughSpeck, 30, 3); speckle(g, P.wallHi, 8, 2); }));
+    const rough = [0, 1].map(() => mk((g) => {
+      g.fillStyle = P.rough; g.fillRect(0, 0, TILE, TILE);
+      if (theme === 'river') { // grass: blades and a few darker tufts
+        g.strokeStyle = P.roughSpeck; g.lineWidth = 1;
+        for (let i = 0; i < 22; i++) { const x = rnd() * TILE, y = rnd() * TILE; g.beginPath(); g.moveTo(x, y); g.lineTo(x + (rnd() - 0.5) * 3, y - 3 - rnd() * 3); g.stroke(); }
+        speckle(g, '#86b24a', 10, 1);
+      } else { speckle(g, P.roughSpeck, 30, 3); speckle(g, P.wallHi, 8, 2); }
+    }));
+    const dirtBase = P.dirt || P.rough, dirtSpeck = P.dirtSpeck || P.roughSpeck, dirtHi = P.dirtHi || P.wallHi;
+    const dirt = [0, 1].map(() => mk((g) => { g.fillStyle = dirtBase; g.fillRect(0, 0, TILE, TILE); speckle(g, dirtSpeck, 22, 2); speckle(g, dirtHi, 12, 2); speckle(g, '#5a4526', 6, 3); }));
+    const waterBase = P.water || '#1d5f8a', waterDeep = P.waterDeep || '#164a6e', waterHi = P.waterHi || '#4a9bd0';
+    const glints = []; for (let i = 0; i < 7; i++) glints.push([rnd() * TILE, rnd() * TILE, 4 + rnd() * 6]);
+    const water = [0, 1, 2, 3].map((f) => mk((g) => { // four frames of drifting glints, cycled per tile for a live surface
+      g.fillStyle = waterBase; g.fillRect(0, 0, TILE, TILE);
+      g.fillStyle = waterDeep; for (let i = 0; i < 4; i++) g.fillRect(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), 6, 2);
+      g.fillStyle = waterHi;
+      for (const [gx, gy, gl] of glints) { const x = (gx + f * 2.5) % TILE; g.fillRect(x, gy, Math.min(gl, TILE - x), 1.5); }
+    }));
+    const bridgeBase = P.bridge || '#7a5a34', bridgeDark = P.bridgeDark || '#4e381f', bridgeHi = P.bridgeHi || '#9a7848';
+    const plank = (vertical) => mk((g) => { // planks run across the direction of travel
+      g.fillStyle = bridgeBase; g.fillRect(0, 0, TILE, TILE);
+      for (let i = 0; i < TILE; i += 5) {
+        g.fillStyle = bridgeDark; if (vertical) g.fillRect(i, 0, 1, TILE); else g.fillRect(0, i, TILE, 1);
+        g.fillStyle = bridgeHi; if (vertical) g.fillRect(i + 1, 0, 1, TILE); else g.fillRect(0, i + 1, TILE, 1);
+      }
+      speckle(g, bridgeDark, 6, 1);
+    });
+    const bridge = { h: plank(true), v: plank(false) };
     const rad = mk((g) => {
       g.fillStyle = P.rad; g.fillRect(0, 0, TILE, TILE);
       g.fillStyle = '#2f8a22'; for (let i = 0; i < 8; i++) { g.beginPath(); g.arc(rnd() * TILE, rnd() * TILE, 1.5 + rnd() * 3, 0, Math.PI * 2); g.fill(); }
@@ -114,6 +142,10 @@
       wall.push(mk((g) => {
         g.fillStyle = m ? P.wall : P.wallDeep; g.fillRect(0, 0, TILE, TILE);
         if (theme === 'surface') { speckle(g, m ? P.wallHi : P.wall, 18, 2); speckle(g, P.wallLo, 12, 2); }
+        else if (theme === 'river') { // scrub: dark ground with bush blobs
+          speckle(g, P.wallLo, 10, 2);
+          for (let i = 0; i < 5; i++) { const x = rnd() * TILE, y = rnd() * TILE, r = 3 + rnd() * 4; g.fillStyle = P.wallLo; g.beginPath(); g.arc(x + 1, y + 1, r, 0, Math.PI * 2); g.fill(); g.fillStyle = m ? P.wallHi : P.wall; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); }
+        }
         else {
           // steel plating
           g.strokeStyle = P.wallLo; g.lineWidth = 1; g.strokeRect(0.5, 0.5, TILE - 1, TILE - 1);
@@ -123,6 +155,15 @@
         if (!m) return;
         const kerb = (x, y, w, h) => {
           if (theme === 'surface') { g.fillStyle = P.kerb; g.fillRect(x, y, w, h); }
+          else if (theme === 'river') { // a shoulder of boulders along the open edge
+            const along = w > h, n = 4;
+            for (let i = 0; i < n; i++) {
+              const cx = along ? x + (i + 0.5) * (w / n) : x + w / 2, cy = along ? y + h / 2 : y + (i + 0.5) * (h / n), r = 2.5 + rnd() * 1.5;
+              g.fillStyle = '#4a4640'; g.beginPath(); g.arc(cx + 1, cy + 1, r, 0, Math.PI * 2); g.fill();
+              g.fillStyle = P.kerb; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
+              g.fillStyle = '#b5ada0'; g.beginPath(); g.arc(cx - 1, cy - 1, r * 0.4, 0, Math.PI * 2); g.fill();
+            }
+          }
           else { // hazard stripes along the open edge
             g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
             g.fillStyle = '#1a1a1a'; g.fillRect(x, y, w, h);
@@ -131,11 +172,12 @@
             g.restore();
           }
         };
-        const kw = theme === 'surface' ? 3 : 4;
+        const kw = theme === 'surface' ? 3 : theme === 'river' ? 7 : 4;
         if (m & 1) kerb(0, 0, TILE, kw);
         if (m & 4) kerb(0, TILE - kw, TILE, kw);
         if (m & 8) kerb(0, 0, kw, TILE);
         if (m & 2) kerb(TILE - kw, 0, kw, TILE);
+        if (theme === 'river') return; // boulders need no bevel
         // inner shadow line so the wall reads as raised
         g.fillStyle = P.wallLo;
         if (m & 1) g.fillRect(0, kw, TILE, 1);
@@ -145,7 +187,7 @@
         if (m & 2) g.fillRect(TILE - kw - 1, 0, 1, TILE);
       }));
     }
-    return { road, rough, rad, wall };
+    return { road, rough, dirt, water, bridge, rad, wall };
   }
 
   function makeMinimap(L) {
@@ -156,7 +198,8 @@
     for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) {
       const t = L.grid[y * L.w + x];
       if (t === T.WALL) continue;
-      g.fillStyle = t === T.RAD ? '#3fbf2a' : t === T.ROUGH ? '#6b5a3c' : t === T.EXIT ? '#f5a524' : '#8b9bb0';
+      g.fillStyle = t === T.RAD ? '#3fbf2a' : t === T.ROUGH ? (L.theme === 'river' ? '#4f7a36' : '#6b5a3c') : t === T.EXIT ? '#f5a524'
+        : t === T.WATER ? '#1d5f8a' : t === T.BRIDGE ? '#a58453' : t === T.DIRT ? '#8a6a3c' : '#8b9bb0';
       g.fillRect(x * s, y * s, s, s);
     }
     cv.scale = s;
@@ -188,8 +231,10 @@
   function clampCamera() { const L = G.level; G.cam.x = clamp(G.cam.x, W / 2, L.w * TILE - W / 2); G.cam.y = clamp(G.cam.y, H / 2, L.h * TILE - H / 2); }
 
   // ---------- modal ----------
-  function showModal({ kicker = '', title, body = '', actions = [] }) {
-    ui.modalKicker.textContent = kicker; ui.modalTitle.textContent = title; ui.modalBody.innerHTML = body;
+  function showModal({ kicker = '', title, body = '', actions = [], wide = false }) {
+    ui.modalKicker.textContent = kicker; ui.modalTitle.textContent = title;
+    if (typeof body === 'string') ui.modalBody.innerHTML = body; else { ui.modalBody.innerHTML = ''; ui.modalBody.appendChild(body); }
+    ui.modal.firstElementChild.classList.toggle('wide', wide);
     ui.modalActions.innerHTML = ''; modalPrimary = null;
     let first = null;
     actions.forEach((a) => {
@@ -220,10 +265,69 @@
     ui.sector.textContent = 'Standby';
     showModal({
       kicker: 'Mastertronic 1985 · Browser remake', title: 'The Last V8',
-      body: `<p>The war is over and the surface is glowing. You are driving the last V8 on Earth, and the base is about to seal itself. One road home, a countdown that never stops, and walls that end the run on contact.</p>${CONTROLS}<p class="hi-note">Best run: ${G.hi.toLocaleString()} pts · Three sectors · Return to base immediately.</p>`,
-      actions: [{ label: 'Start mission', primary: true, onClick: startGame }, { label: 'How to play', onClick: () => showHelp(showTitle) }],
+      body: `<p>The war is over and the surface is glowing. You are driving the last V8 on Earth, and the base is about to seal itself. One road home, a countdown that never stops, and walls that end the run on contact.</p>${CONTROLS}<p class="hi-note">Best run: ${G.hi.toLocaleString()} pts · ${LEVELS.length} sectors · Return to base immediately.</p>`,
+      actions: [{ label: 'Choose sector', primary: true, onClick: showLevelSelect }, { label: 'How to play', onClick: () => showHelp(showTitle) }],
     });
   }
+
+  // ---------- sector select ----------
+  const previews = [];
+  // Renders a real in-game view of the level around its preview point, using the same tile atlas and entity drawing.
+  function renderPreview(i) {
+    if (previews[i]) return previews[i];
+    const def = LEVELS[i], level = buildLevel(def), atlas = makeAtlas(def.theme), pal = PALETTES[def.theme];
+    const cv = document.createElement('canvas'); cv.width = 480; cv.height = 270;
+    const saved = { ctx, level: G.level, atlas: G.atlas, pal: G.pal, car: G.car, cam: G.cam, state: G.state };
+    const p = def.preview || def.start;
+    const PS = 0.75, vw = W / PS * 0.5, vh = H / PS * 0.5; // preview shows a closer crop than the game view
+    const cam = { x: clamp((p.x + 0.5) * TILE, vw, level.w * TILE - vw), y: clamp((p.y + 0.5) * TILE, vh, level.h * TILE - vh) };
+    ctx = cv.getContext('2d'); G.level = level; G.atlas = atlas; G.pal = pal; G.cam = cam; G.car = makeCar(def.start); G.state = 'preview';
+    ctx.setTransform(PS, 0, 0, PS, 0, 0);
+    ctx.fillStyle = pal.bg; ctx.fillRect(0, 0, W, H);
+    const ox = Math.round(vw - cam.x), oy = Math.round(vh - cam.y);
+    ctx.save(); ctx.translate(ox, oy);
+    drawTiles(ox, oy); drawExit(level); drawCheckpoints(level); drawFuel(level); drawWrecks(level); drawDoors(level);
+    if (Math.abs(G.car.x - cam.x) < vw && Math.abs(G.car.y - cam.y) < vh) drawCar();
+    ctx.restore();
+    ctx.setTransform(0.5, 0, 0, 0.5, 0, 0); ctx.drawImage(vignette, 0, 0);
+    ctx = saved.ctx; G.level = saved.level; G.atlas = saved.atlas; G.pal = saved.pal; G.car = saved.car; G.cam = saved.cam; G.state = saved.state;
+    previews[i] = cv;
+    return cv;
+  }
+  function showLevelSelect() {
+    G.state = 'select'; Snd.stopMusic(); Snd.setEngine(0, 0, false, false);
+    const cleared = store.get('lastv8.cleared', {});
+    const grid = document.createElement('div'); grid.className = 'level-grid';
+    LEVELS.forEach((def, i) => {
+      const card = document.createElement('button'); card.type = 'button'; card.className = 'level-card'; card.dataset.index = i;
+      card.setAttribute('aria-label', `Sector ${i + 1}: ${def.name}`);
+      const pic = document.createElement('div'); pic.className = 'lc-pic'; pic.appendChild(renderPreview(i));
+      const num = document.createElement('span'); num.className = 'lc-num'; num.textContent = `Sector ${i + 1}`; pic.appendChild(num);
+      if (cleared[i]) { const b = document.createElement('span'); b.className = 'lc-badge'; b.textContent = 'Cleared'; pic.appendChild(b); }
+      const body = document.createElement('div'); body.className = 'lc-body';
+      body.innerHTML = `<b class="lc-name"></b><span class="lc-tag"></span><span class="lc-meta"></span>`;
+      body.querySelector('.lc-name').textContent = def.name;
+      body.querySelector('.lc-tag').textContent = def.tagline || def.subtitle;
+      body.querySelector('.lc-meta').textContent = `${def.subtitle} · ${Math.round(def.time * timeScale())}s countdown${def.doors.length ? ` · ${def.doors.length} blast doors` : ''}`;
+      card.appendChild(pic); card.appendChild(body);
+      card.addEventListener('click', () => { unlockAudio(); startAt(i); });
+      grid.appendChild(card);
+    });
+    showModal({
+      kicker: 'Mission select', title: 'Choose a sector', wide: true, body: grid,
+      actions: [{ label: 'Back', onClick: showTitle }],
+    });
+    const first = grid.querySelector('.level-card'); if (first) first.focus({ preventScroll: true });
+  }
+  function moveCardFocus(dx, dy) {
+    const cards = [...ui.modalBody.querySelectorAll('.level-card')]; if (!cards.length) return false;
+    const cols = window.innerWidth < 560 ? 1 : 2;
+    let i = cards.indexOf(document.activeElement); if (i < 0) i = 0;
+    else i = clamp(i + dx + dy * cols, 0, cards.length - 1);
+    cards[i].focus({ preventScroll: true });
+    return true;
+  }
+  function startAt(i) { G.levelIndex = i; G.loop = 1; G.lives = START_LIVES; G.score = 0; prepareLevel(i); showIntro(); }
   function showHelp(back) {
     const prev = G.state;
     showModal({
@@ -231,7 +335,11 @@
       body: `<p>Reach the base marker before the countdown hits zero. Checkpoints save your position and add time. Fuel cans top up the tank. Anything solid destroys the car.</p>${CONTROLS}
       <div class="legend">
         <div><i style="background:#2a2b2f;border:1px solid #555"></i>Road — full speed</div>
+        <div><i style="background:#8a6a3c"></i>Dirt track — loose, slower</div>
+        <div><i style="background:#6f9a3c"></i>Grass verge — slow but safe</div>
         <div><i style="background:#8f7a4f"></i>Rubble — slow and heavy</div>
+        <div><i style="background:#1d5f8a"></i>Water — the car sinks</div>
+        <div><i style="background:#7a5a34"></i>Bridge — the only way across</div>
         <div><i style="background:#3fbf2a"></i>Radiation — the meter climbs fast</div>
         <div><i style="background:#d8341f"></i>Fuel can — +40%</div>
         <div><i style="background:#2dd4bf"></i>Checkpoint — respawn here, +4s</div>
@@ -242,7 +350,6 @@
     });
     $('#voiceToggle').addEventListener('change', (e) => { settings.voice = e.target.checked; store.set('lastv8.settings', settings); });
   }
-  function startGame() { G.levelIndex = 0; G.loop = 1; G.lives = START_LIVES; G.score = 0; prepareLevel(0); showIntro(); }
   function showIntro() {
     G.state = 'intro'; Snd.stopMusic(); G.car.visible = true;
     const def = LEVELS[G.levelIndex];
@@ -261,7 +368,7 @@
     if (G.state === 'play') {
       G.state = 'paused'; Snd.setEngine(0, 0, false, false); Snd.stopMusic();
       showModal({ kicker: 'Paused', title: 'Mission on hold', body: '<p>The countdown is frozen. Take a breath.</p>' + statGrid(),
-        actions: [{ label: 'Resume', primary: true, onClick: resumePlay }, { label: 'Restart sector', onClick: retryLevel }, { label: 'Main menu', onClick: showTitle }] });
+        actions: [{ label: 'Resume', primary: true, onClick: resumePlay }, { label: 'Restart sector', onClick: retryLevel }, { label: 'Sectors', onClick: showLevelSelect }] });
     } else if (G.state === 'paused') resumePlay();
   }
   function resumePlay() { hideModal(); G.state = 'play'; last = performance.now(); Snd.startMusic(); }
@@ -270,9 +377,10 @@
   function crash(reason) {
     const c = G.car;
     G.state = 'crash'; G.crashTimer = reason === 'fuel' ? 1.4 : 2.0; G.crashReason = reason; c.speed = 0; c.throttle = 0;
-    if (reason !== 'fuel') { c.visible = false; explode(c.x, c.y, reason === 'rad'); G.shake = 22; G.flash = 1; G.flashColor = reason === 'rad' ? '120,255,80' : '255,240,200'; Snd.explosion(); }
+    if (reason === 'water') { c.visible = false; splash(c.x, c.y); G.shake = 6; Snd.splash(); }
+    else if (reason !== 'fuel') { c.visible = false; explode(c.x, c.y, reason === 'rad'); G.shake = 22; G.flash = 1; G.flashColor = reason === 'rad' ? '120,255,80' : '255,240,200'; Snd.explosion(); }
     Snd.setEngine(0, 0, false, false);
-    banner({ wall: 'Vehicle destroyed', rad: 'Radiation lethal', fuel: 'Out of fuel' }[reason], 'danger');
+    banner({ wall: 'Vehicle destroyed', rad: 'Radiation lethal', fuel: 'Out of fuel', water: 'Vehicle sank' }[reason], 'danger');
   }
   function afterCrash() {
     G.lives -= 1;
@@ -294,11 +402,12 @@
       wall: 'The last V8 is a wreck, and there is no other car.',
       rad: 'Radiation reached a lethal dose before the base came into view.',
       fuel: 'The tank ran dry with the base still out of reach.',
+      water: 'The last V8 is at the bottom of the lake. Bridges only.',
     }[reason];
     setTimeout(() => showModal({
       kicker: 'Mission failed', title: reason === 'detonation' ? 'Detonation' : 'Game over',
       body: `<p>${msg}</p>${statGrid()}`,
-      actions: [{ label: 'Retry sector', primary: true, onClick: retryLevel }, { label: 'Main menu', onClick: showTitle }],
+      actions: [{ label: 'Retry sector', primary: true, onClick: retryLevel }, { label: 'Sectors', onClick: showLevelSelect }],
     }), reason === 'detonation' ? 1400 : 500);
   }
   function completeLevel() {
@@ -306,6 +415,7 @@
     G.state = 'levelcomplete'; G.completeTimer = 1.7; G.completeShown = false;
     G.bonus = Math.round(G.timeLeft) * 50; G.score += 1000 + G.bonus;
     if (G.lives < MAX_LIVES) G.lives += 1;
+    const cleared = store.get('lastv8.cleared', {}); cleared[G.levelIndex] = true; store.set('lastv8.cleared', cleared);
     c.throttle = 0; Snd.fanfare(); Snd.setEngine(0, 0, false, false); say('Vehicle secured.'); banner('Base reached', 'ok');
     saveHi();
   }
@@ -319,7 +429,7 @@
       actions: [{ label: lastSector ? 'Run it again, harder' : 'Next sector', primary: true, onClick: () => {
         if (lastSector) { G.loop += 1; G.levelIndex = 0; } else G.levelIndex += 1;
         prepareLevel(G.levelIndex); showIntro();
-      } }, { label: 'Main menu', onClick: showTitle }],
+      } }, { label: 'Sectors', onClick: showLevelSelect }],
     });
   }
 
@@ -332,6 +442,7 @@
   const KEYMAP = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right' };
   window.addEventListener('keydown', (e) => {
     if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+    if (G.state === 'select' && KEYMAP[e.code]) { const k = KEYMAP[e.code]; if (moveCardFocus(k === 'right' ? 1 : k === 'left' ? -1 : 0, k === 'down' ? 1 : k === 'up' ? -1 : 0)) { e.preventDefault(); return; } }
     if (KEYMAP[e.code]) { keys[KEYMAP[e.code]] = true; e.preventDefault(); if (G.state === 'play') unlockAudio(); }
     if (e.repeat) return;
     if ((e.code === 'Enter' || e.code === 'Space') && modalPrimary) {
@@ -377,6 +488,7 @@
     if (G.state === 'play') { togglePause(); showHelp(() => { hideModal(); togglePause(); }); }
     else if (G.state === 'title') showHelp(showTitle);
     else if (G.state === 'intro') showHelp(showIntro);
+    else if (G.state === 'select') showHelp(showLevelSelect);
   });
 
   // ---------- update ----------
@@ -422,13 +534,13 @@
     const brake = keys.down ? 1 : 0;
     const steer = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
     const under = L.tileAt(c.x, c.y);
-    const rough = under === T.ROUGH;
+    const rough = under === T.ROUGH, dirt = under === T.DIRT;
 
-    if (throttle) c.speed += (rough ? 260 : 400) * dt;
+    if (throttle) c.speed += (rough ? 260 : dirt ? 340 : 400) * dt;
     if (brake) c.speed -= (c.speed > 0 ? 560 : 220) * dt;
-    c.speed -= c.speed * (rough ? 2.4 : 0.55) * dt;
+    c.speed -= c.speed * (rough ? 2.4 : dirt ? 0.85 : 0.55) * dt;
     if (!throttle && !brake && Math.abs(c.speed) < 3) c.speed = 0;
-    c.speed = clamp(c.speed, -150, rough ? 190 : TOP_SPEED);
+    c.speed = clamp(c.speed, -150, rough ? 190 : dirt ? 340 : TOP_SPEED);
 
     // Steering ramps in over ~0.1s so a tap nudges and a held key swings the car round.
     c.steerAmt += (steer - c.steerAmt) * Math.min(1, dt * 12);
@@ -448,9 +560,12 @@
     if (c.rad >= 100) return crash('rad');
     if (c.rad >= 70 && !G.said.rad) { G.said.rad = true; say('Radiation critical.'); banner('Radiation critical', 'danger'); }
 
-    if (hitsWall(c) || hitsDoor(c) || hitsWreck(c)) return crash('wall');
+    const hit = hitsGround(c);
+    if (hit) return crash(hit);
+    if (hitsDoor(c) || hitsWreck(c)) return crash('wall');
 
     if (throttle && Math.random() < 0.7) spawnExhaust(c);
+    if ((dirt || rough) && Math.abs(c.speed) > 60 && Math.random() < 0.5) spawnDust(c, dirt);
     if (c.skid && Math.random() < 0.6) spawnSkidDust(c);
 
     const tx = Math.floor(c.x / TILE), ty = Math.floor(c.y / TILE);
@@ -470,7 +585,12 @@
     return [[hl, hw], [hl, -hw], [-hl, hw], [-hl, -hw], [0, hw], [0, -hw], [hl, 0], [-hl, 0]]
       .map(([lx, ly]) => [c.x + lx * cs - ly * sn, c.y + lx * sn + ly * cs]);
   }
-  function hitsWall(c) { const L = G.level; for (const [x, y] of carPoints(c)) if (L.tileAt(x, y) === T.WALL) return true; return false; }
+  // Returns the crash reason if any part of the car is on rock or in water, otherwise null.
+  function hitsGround(c) {
+    const L = G.level;
+    for (const [x, y] of carPoints(c)) { const t = L.tileAt(x, y); if (t === T.WALL) return 'wall'; if (t === T.WATER) return 'water'; }
+    return null;
+  }
   function doorPanels(d) {
     // Closed doors are two panels that meet in the middle of the corridor; the barrier is a 12px band in the tile's centre.
     const closed = 1 - d.openAmt;
@@ -530,6 +650,14 @@
     const s = Math.sign(c.steer), bx = c.x - Math.cos(c.angle) * 10 - Math.sin(c.angle) * 7 * s, by = c.y - Math.sin(c.angle) * 10 + Math.cos(c.angle) * 7 * s;
     G.particles.push({ type: 'smoke', x: bx, y: by, vx: (Math.random() - 0.5) * 40, vy: (Math.random() - 0.5) * 40, life: 0.4, max: 0.4, size: 3, grow: 14, color: '200,190,170', alpha: 0.3 });
   }
+  function spawnDust(c, dirt) {
+    const bx = c.x - Math.cos(c.angle) * 8 + (Math.random() - 0.5) * 10, by = c.y - Math.sin(c.angle) * 8 + (Math.random() - 0.5) * 10;
+    G.particles.push({ type: 'smoke', x: bx, y: by, vx: -Math.cos(c.angle) * 20 + (Math.random() - 0.5) * 30, vy: -Math.sin(c.angle) * 20 + (Math.random() - 0.5) * 30, life: 0.7, max: 0.7, size: 3, grow: 16, color: dirt ? '170,140,95' : '120,150,80', alpha: 0.4 });
+  }
+  function splash(x, y) {
+    for (let i = 0; i < 40; i++) { const a = Math.random() * Math.PI * 2, v = 40 + Math.random() * 160; G.particles.push({ type: 'fire', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 40, life: 0.4 + Math.random() * 0.5, max: 0.9, size: 2 + Math.random() * 3, color: i % 2 ? '200,230,255' : '120,180,230' }); }
+    for (let i = 0; i < 6; i++) G.particles.push({ type: 'smoke', x, y, vx: 0, vy: 0, life: 0.9 + i * 0.15, max: 1.5, size: 6 + i * 5, grow: 30, color: '190,225,255', alpha: 0.35 });
+  }
   function spawnRadSpark(c) {
     G.particles.push({ type: 'fire', x: c.x + (Math.random() - 0.5) * 20, y: c.y + (Math.random() - 0.5) * 20, vx: (Math.random() - 0.5) * 30, vy: -20 - Math.random() * 40, life: 0.5, max: 0.5, size: 2, color: '120,255,80' });
   }
@@ -583,17 +711,40 @@
     const L = G.level, A = G.atlas, P = G.pal;
     const x0 = Math.max(0, Math.floor(-ox / TILE)), y0 = Math.max(0, Math.floor(-oy / TILE));
     const x1 = Math.min(L.w - 1, Math.floor((W - ox) / TILE)), y1 = Math.min(L.h - 1, Math.floor((H - oy) / TILE));
-    const radTiles = [];
+    const radTiles = [], bridgeTiles = [], shoreTiles = [];
+    const frame = Math.floor(G.t * 5);
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         const i = y * L.w + x, t = L.grid[i];
         let img;
         if (t === T.WALL) img = A.wall[L.mask[i]];
         else if (t === T.ROUGH) img = A.rough[(x * 3 + y * 5) % A.rough.length];
+        else if (t === T.DIRT) img = A.dirt[(x * 5 + y * 3) % A.dirt.length];
+        else if (t === T.WATER) { img = A.water[(x + y + frame) & 3]; if (L.mask[i]) shoreTiles.push(x, y, L.mask[i]); }
+        else if (t === T.BRIDGE) { img = (L.get(x, y - 1) === T.WATER || L.get(x, y + 1) === T.WATER) ? A.bridge.h : A.bridge.v; bridgeTiles.push(x, y); }
         else if (t === T.RAD) { img = A.rad; radTiles.push(x, y); }
         else img = A.road[(x * 7 + y * 13) % A.road.length];
         ctx.drawImage(img, x * TILE, y * TILE, TILE, TILE);
       }
+    }
+    // foam where water meets land, rails where a bridge runs beside water
+    if (shoreTiles.length) {
+      ctx.fillStyle = 'rgba(255,255,255,0.28)';
+      for (let i = 0; i < shoreTiles.length; i += 3) {
+        const x = shoreTiles[i] * TILE, y = shoreTiles[i + 1] * TILE, m = shoreTiles[i + 2];
+        if (m & 1) ctx.fillRect(x, y, TILE, 2);
+        if (m & 4) ctx.fillRect(x, y + TILE - 2, TILE, 2);
+        if (m & 8) ctx.fillRect(x, y, 2, TILE);
+        if (m & 2) ctx.fillRect(x + TILE - 2, y, 2, TILE);
+      }
+    }
+    for (let i = 0; i < bridgeTiles.length; i += 2) {
+      const tx = bridgeTiles[i], ty = bridgeTiles[i + 1], x = tx * TILE, y = ty * TILE;
+      const rail = (rx, ry, rw, rh) => { ctx.fillStyle = '#3a2a16'; ctx.fillRect(rx, ry, rw, rh); ctx.fillStyle = '#a58453'; ctx.fillRect(rx, ry, rw > rh ? rw : 1.5, rw > rh ? 1.5 : rh); };
+      if (L.get(tx, ty - 1) === T.WATER) rail(x, y, TILE, 4);
+      if (L.get(tx, ty + 1) === T.WATER) rail(x, y + TILE - 4, TILE, 4);
+      if (L.get(tx - 1, ty) === T.WATER) rail(x, y, 4, TILE);
+      if (L.get(tx + 1, ty) === T.WATER) rail(x + TILE - 4, y, 4, TILE);
     }
     // pulsing glow over radiation pools
     if (radTiles.length) {

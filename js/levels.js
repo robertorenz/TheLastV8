@@ -5,12 +5,56 @@
   'use strict';
 
   const TILE = 32;
-  const T = { WALL: 0, ROAD: 1, ROUGH: 2, RAD: 3, EXIT: 4 };
+  const T = { WALL: 0, ROAD: 1, ROUGH: 2, RAD: 3, EXIT: 4, WATER: 5, BRIDGE: 6, DIRT: 7 };
 
   const LEVELS = [
     {
-      name: 'The Wasteland',
+      // Modelled on the original's first level: lakes, a river, narrow bridges and dirt tracks between the tarmac.
+      name: 'Riverlands',
       subtitle: 'Surface run',
+      tagline: 'Lakes, plank bridges and dirt tracks',
+      preview: { x: 48, y: 51 },
+      theme: 'river',
+      w: 96, h: 72,
+      time: 75,
+      ambientRad: 0.4,
+      briefing: 'The last V8 is parked at the edge of the flood plain. The base tunnel is across the river and back again: two bridges barely wider than the car, dirt tracks that will not hold a hard turn, and lakes that swallow anything that leaves the road. Grass verges are slow but survivable. Scrub and rock are not.',
+      start: { x: 5, y: 64, dir: 0 },
+      exit: [14, 5, 18, 7],
+      path: [
+        { w: 3, pts: [[5, 64], [30, 64], [30, 52]] },
+        { w: 3, t: 'dirt', pts: [[30, 52], [40, 52]] },
+        { w: 2, pts: [[40, 52], [56, 52]] },
+        { w: 3, pts: [[56, 52], [56, 40]] },
+        { w: 3, t: 'dirt', pts: [[56, 40], [76, 40], [76, 26]] },
+        { w: 3, pts: [[76, 26], [60, 26], [60, 12]] },
+        { w: 2, pts: [[60, 12], [36, 12]] },
+        { w: 3, pts: [[36, 12], [36, 20]] },
+        { w: 3, t: 'dirt', pts: [[36, 20], [16, 20]] },
+        { w: 3, pts: [[16, 20], [16, 8]] },
+        // dead ends: a washed-out road into the lake, a track to nowhere, and a lure up a blind valley
+        { w: 3, pts: [[30, 52], [18, 52]] },
+        { w: 3, pts: [[56, 52], [70, 52]] },
+        { w: 3, pts: [[56, 40], [56, 30]] },
+      ],
+      grass: [[4, 61, 40, 67], [4, 42, 34, 60], [64, 26, 92, 38], [12, 4, 20, 10], [38, 49, 45, 54], [50, 50, 60, 54], [40, 10, 45, 14], [52, 10, 58, 14]],
+      water: [[6, 44, 24, 58], [46, 0, 50, 71], [66, 28, 90, 36]],
+      bridges: [[45, 51, 51, 52], [75, 28, 76, 36], [45, 11, 51, 12]],
+      rough: [],
+      rad: [[55, 29, 57, 30]],
+      fuel: [[56, 34], [70, 40], [60, 20], [36, 16]],
+      checkpoints: [
+        { x: 30, y: 58, dir: 270 }, { x: 42, y: 52, dir: 0 }, { x: 56, y: 46, dir: 270 }, { x: 76, y: 38, dir: 270 },
+        { x: 60, y: 18, dir: 270 }, { x: 54, y: 12, dir: 180 }, { x: 24, y: 20, dir: 180 }, { x: 16, y: 12, dir: 270 },
+      ],
+      wrecks: [[35, 53, 0.4], [64, 39, 1.1], [70, 41, 2.3], [26, 19, 0.8], [20, 21, 1.9]],
+      doors: [],
+    },
+    {
+      name: 'The Wasteland',
+      subtitle: 'Badlands',
+      tagline: 'Ruins, rubble and radiation pools',
+      preview: { x: 34, y: 47 },
       theme: 'surface',
       w: 96, h: 72,
       time: 80,
@@ -39,6 +83,8 @@
     {
       name: 'The Base',
       subtitle: 'Underground',
+      tagline: 'Steel corridors and blast doors on timers',
+      preview: { x: 27, y: 19 },
       theme: 'base',
       w: 96, h: 72,
       time: 80,
@@ -78,6 +124,8 @@
     {
       name: 'Reactor Core',
       subtitle: 'Containment',
+      tagline: 'Passages barely wider than the car',
+      preview: { x: 66, y: 20 },
       theme: 'core',
       w: 96, h: 72,
       time: 75,
@@ -132,34 +180,45 @@
     // Carve each path segment as a rectangle w tiles across; consecutive rectangles overlap at corners.
     for (const seg of def.path) {
       const half = Math.floor(seg.w / 2), lo = -half, hi = seg.w - 1 - half;
+      const tile = seg.t === 'dirt' ? T.DIRT : T.ROAD;
       for (let i = 0; i < seg.pts.length - 1; i++) {
         const [ax, ay] = seg.pts[i], [bx, by] = seg.pts[i + 1];
-        fillRect(Math.min(ax, bx) + lo, Math.min(ay, by) + lo, Math.max(ax, bx) + hi, Math.max(ay, by) + hi, T.ROAD);
+        fillRect(Math.min(ax, bx) + lo, Math.min(ay, by) + lo, Math.max(ax, bx) + hi, Math.max(ay, by) + hi, tile);
       }
     }
+    // Grass verges: slow but survivable ground laid over rock beside the road. Tracked so checkpoint stripes stop at them.
+    const verge = new Uint8Array(w * h);
+    for (const r of def.grass || []) {
+      for (let y = r[1]; y <= r[3]; y++) for (let x = r[0]; x <= r[2]; x++) if (get(x, y) === T.WALL) { set(x, y, T.ROUGH); verge[y * w + x] = 1; }
+    }
     for (const r of def.rough || []) fillRect(r[0], r[1], r[2], r[3], T.ROUGH, true);
+    for (const r of def.water || []) fillRect(r[0], r[1], r[2], r[3], T.WATER);
+    for (const r of def.bridges || []) fillRect(r[0], r[1], r[2], r[3], T.BRIDGE);
     for (const r of def.rad || []) fillRect(r[0], r[1], r[2], r[3], T.RAD, true);
     fillRect(def.exit[0], def.exit[1], def.exit[2], def.exit[3], T.EXIT);
 
-    const drivable = (x, y) => get(x, y) !== T.WALL;
+    const drivable = (x, y) => { const t = get(x, y); return t !== T.WALL && t !== T.WATER; };
+    const open = (x, y) => get(x, y) !== T.WALL;
 
-    // Wall edge mask: which sides face open road (N=1, E=2, S=4, W=8).
+    // Edge masks (N=1, E=2, S=4, W=8): for walls, which sides face open ground; for water, which sides touch land.
     const mask = new Uint8Array(w * h);
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        if (grid[y * w + x] !== T.WALL) continue;
-        mask[y * w + x] = (drivable(x, y - 1) ? 1 : 0) | (drivable(x + 1, y) ? 2 : 0) | (drivable(x, y + 1) ? 4 : 0) | (drivable(x - 1, y) ? 8 : 0);
+        const t = grid[y * w + x];
+        if (t === T.WALL) mask[y * w + x] = (open(x, y - 1) ? 1 : 0) | (open(x + 1, y) ? 2 : 0) | (open(x, y + 1) ? 4 : 0) | (open(x - 1, y) ? 8 : 0);
+        else if (t === T.WATER) { const land = (px, py) => inside(px, py) && get(px, py) !== T.WATER; mask[y * w + x] = (land(x, y - 1) ? 1 : 0) | (land(x + 1, y) ? 2 : 0) | (land(x, y + 1) ? 4 : 0) | (land(x - 1, y) ? 8 : 0); }
       }
     }
 
-    // Walk across the corridor from (x, y) along one axis and collect the drivable tiles.
+    // Walk across the corridor from (x, y) along one axis and collect the road tiles (verges and water end the walk).
     const stripe = (x, y, axis) => {
       const tiles = [];
-      if (!drivable(x, y)) return tiles;
+      const road = (px, py) => drivable(px, py) && !verge[py * w + px];
+      if (!road(x, y)) return tiles;
       const dx = axis === 'h' ? 1 : 0, dy = axis === 'v' ? 1 : 0;
       let cx = x, cy = y;
-      while (drivable(cx - dx, cy - dy)) { cx -= dx; cy -= dy; }
-      while (drivable(cx, cy)) { tiles.push([cx, cy]); cx += dx; cy += dy; }
+      while (road(cx - dx, cy - dy)) { cx -= dx; cy -= dy; }
+      while (road(cx, cy)) { tiles.push([cx, cy]); cx += dx; cy += dy; }
       return tiles;
     };
     const boundsOf = (tiles) => {

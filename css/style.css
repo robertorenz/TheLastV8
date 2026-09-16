@@ -195,6 +195,29 @@ kbd { font-family: var(--font-mono); font-size: 12px; color: var(--text); backgr
 .check { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); margin-top: 8px; }
 .check input { accent-color: var(--accent); width: 16px; height: 16px; }
 .hi-note { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); letter-spacing: 0.06em; }
+.modal.wide { width: min(780px, 100%); }
+
+/* ----- sector select ----- */
+.level-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; }
+.level-card {
+  display: flex; flex-direction: column; text-align: left; padding: 0; overflow: hidden; cursor: pointer;
+  font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.level-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow); }
+.level-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--accent); }
+.lc-pic { position: relative; background: #05080b; }
+.lc-pic canvas { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+.lc-num, .lc-badge {
+  position: absolute; top: 8px; font-family: var(--font-display); font-size: 10px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+  padding: 4px 8px; border-radius: 6px; background: rgba(5, 8, 11, 0.78); color: #ffd27a;
+}
+.lc-num { left: 8px; }
+.lc-badge { right: 8px; color: #7cf5df; }
+.lc-body { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px 12px; }
+.lc-name { font-family: var(--font-display); font-size: 14px; font-weight: 700; letter-spacing: 0.06em; }
+.lc-tag { color: var(--muted); font-size: 13.5px; }
+.lc-meta { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); letter-spacing: 0.04em; margin-top: 3px; }
 
 /* ----- full-screen cockpit: the game view takes every pixel between the top bar and the dashboard ----- */
 @media (min-width: 900px) and (min-height: 560px) {
@@ -219,7 +242,7 @@ kbd { font-family: var(--font-mono); font-size: 12px; color: var(--text); backgr
   .modal { padding: 20px; }
   .modal h2 { font-size: 24px; }
   .stat-grid { grid-template-columns: 1fr; }
-  .keys, .legend { grid-template-columns: 1fr; }
+  .keys, .legend, .level-grid { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
   .modal { animation: none; }
