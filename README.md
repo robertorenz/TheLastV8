@@ -15,9 +15,10 @@ Open `index.html` in a browser, or serve the folder with any static server.
 | `←` `→` / `A` `D` | Steer |
 | `P` / `Esc` | Pause |
 | `M` | Sound on / off |
+| `F` | Fullscreen |
 | `Enter` | Confirm |
 
-Touch devices get on-screen steering and pedal buttons.
+On desktop the game view fills every pixel between the top bar and the dashboard, rendered at native resolution; `F` or the Fullscreen button takes over the whole display. Touch devices get on-screen steering and pedal buttons.
 
 ## The mission
 

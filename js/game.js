@@ -9,16 +9,26 @@
   const $ = (s) => document.querySelector(s);
   const canvas = $('#game');
   const ctx = canvas.getContext('2d');
-  const W = 960, H = 540;
+  const W = 960, H = 540; // logical view; the backing store follows the on-screen size so the picture stays sharp at any scale
   const DPR = Math.min(2, window.devicePixelRatio || 1);
-  canvas.width = W * DPR; canvas.height = H * DPR;
+  function resizeCanvas() {
+    const r = canvas.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    let fw = r.width, fh = r.width * H / W;
+    if (fh > r.height) { fh = r.height; fw = r.height * W / H; }
+    const bw = Math.min(3840, Math.round(fw * DPR)), bh = Math.round(bw * H / W);
+    if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+  if ('ResizeObserver' in window) new ResizeObserver(resizeCanvas).observe(canvas.parentElement);
 
   const ui = {
     banner: $('#banner'), modal: $('#modal'), modalKicker: $('#modalKicker'), modalTitle: $('#modalTitle'),
     modalBody: $('#modalBody'), modalActions: $('#modalActions'), sector: $('#sector'),
     speedVal: $('#speedVal'), fuelBar: $('#fuelBar'), fuelVal: $('#fuelVal'), radBar: $('#radBar'), radVal: $('#radVal'),
     timeVal: $('#timeVal'), timerCard: $('#timerCard'), scoreVal: $('#scoreVal'), hiVal: $('#hiVal'), lives: $('#lives'),
-    mini: $('#minimap'), btnPause: $('#btnPause'), btnSound: $('#btnSound'), btnHelp: $('#btnHelp'), gauge: $('#gauge'),
+    mini: $('#minimap'), btnPause: $('#btnPause'), btnSound: $('#btnSound'), btnHelp: $('#btnHelp'), btnFull: $('#btnFull'), gauge: $('#gauge'),
     touch: $('#touch'),
   };
   const mctx = ui.mini.getContext('2d');
@@ -84,7 +94,8 @@
   function makeAtlas(theme) {
     const P = PALETTES[theme];
     const rnd = mulberry32(theme.length * 7919 + 17);
-    const mk = (draw) => { const cv = document.createElement('canvas'); cv.width = cv.height = TILE; const g = cv.getContext('2d'); draw(g); return cv; };
+    const AR = 2; // tiles are drawn at 2x so they stay crisp when the view is scaled up on big screens
+    const mk = (draw) => { const cv = document.createElement('canvas'); cv.width = cv.height = TILE * AR; const g = cv.getContext('2d'); g.scale(AR, AR); draw(g); return cv; };
     const speckle = (g, color, n, s) => { g.fillStyle = color; for (let i = 0; i < n; i++) g.fillRect(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), s, s); };
 
     const road = [0, 1, 2].map(() => mk((g) => {
@@ -200,7 +211,7 @@
   const CONTROLS = `<div class="keys">
     <div><kbd>↑</kbd> / <kbd>W</kbd> accelerate</div><div><kbd>↓</kbd> / <kbd>S</kbd> brake, reverse</div>
     <div><kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd> steer</div><div><kbd>P</kbd> / <kbd>Esc</kbd> pause</div>
-    <div><kbd>M</kbd> sound on / off</div><div><kbd>Enter</kbd> confirm</div></div>`;
+    <div><kbd>M</kbd> sound on / off</div><div><kbd>F</kbd> fullscreen</div><div><kbd>Enter</kbd> confirm</div></div>`;
 
   // ---------- flow ----------
   function showTitle() {
@@ -330,6 +341,7 @@
     if (e.code === 'Space') e.preventDefault();
     if (e.code === 'KeyP' || e.code === 'Escape') togglePause();
     if (e.code === 'KeyM') toggleSound();
+    if (e.code === 'KeyF') toggleFullscreen();
   });
   window.addEventListener('keyup', (e) => { if (KEYMAP[e.code]) { keys[KEYMAP[e.code]] = false; e.preventDefault(); } });
   window.addEventListener('blur', () => { keys.up = keys.down = keys.left = keys.right = false; });
@@ -351,6 +363,15 @@
   }
   ui.btnSound.textContent = settings.sound ? 'Sound: on' : 'Sound: off';
   ui.btnSound.addEventListener('click', toggleSound);
+
+  function toggleFullscreen() {
+    if (!document.fullscreenEnabled) return;
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+  }
+  if (!document.fullscreenEnabled) ui.btnFull.hidden = true;
+  ui.btnFull.addEventListener('click', toggleFullscreen);
+  document.addEventListener('fullscreenchange', () => { ui.btnFull.textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen'; resizeCanvas(); });
   ui.btnPause.addEventListener('click', () => { if (G.state === 'play' || G.state === 'paused') togglePause(); });
   ui.btnHelp.addEventListener('click', () => {
     if (G.state === 'play') { togglePause(); showHelp(() => { hideModal(); togglePause(); }); }
@@ -539,7 +560,7 @@
 
   // ---------- render ----------
   function render() {
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
     const L = G.level, P = G.pal;
     const sx = (Math.random() - 0.5) * G.shake, sy = (Math.random() - 0.5) * G.shake;
     const ox = Math.round(W / 2 - G.cam.x + sx), oy = Math.round(H / 2 - G.cam.y + sy);
@@ -571,7 +592,7 @@
         else if (t === T.ROUGH) img = A.rough[(x * 3 + y * 5) % A.rough.length];
         else if (t === T.RAD) { img = A.rad; radTiles.push(x, y); }
         else img = A.road[(x * 7 + y * 13) % A.road.length];
-        ctx.drawImage(img, x * TILE, y * TILE);
+        ctx.drawImage(img, x * TILE, y * TILE, TILE, TILE);
       }
     }
     // pulsing glow over radiation pools
