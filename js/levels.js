@@ -21,62 +21,60 @@
       speedScale: 0.75,
       name: 'Riverlands',
       subtitle: 'Surface run',
-      tagline: 'Winding roads, a river, and a world that loops',
+      tagline: 'One road that wraps the valley and works its way down',
       preview: { x: 76, y: 44 },
       theme: 'meadow',
       w: 160, h: 64,
-      time: 45,
+      time: 60,
       ambientRad: 0.4,
-      briefing: 'The last V8 is parked on the highway with the tank full. The base is a tunnel mouth on the far side of the river, and the valley loops: every road that runs off the east edge comes back in from the west. Grass is slow but survivable; trees, hedges, houses and water are not.',
-      start: { x: 148, y: 12, dir: 0 },
+      briefing: 'The last V8 is parked on the highway with the tank full. There is one road to the base: it runs off the east edge, comes back in from the west, and each time it does it drops a level, down past the lake, over the river and along the bottom of the valley to the tunnel. Grass is slow but survivable; trees, hedges, houses and water are not.',
+      start: { x: 148, y: 12.6, dir: 0 },
       exit: [86, 55, 91, 57],
+      // ONE road from start to base, as in the original: it runs off the east edge, comes back in on the west edge at
+      // the same height, and then turns DOWN to the next band. Polylines continue past x = 160 to make the wrap joins
+      // part of the same smooth curve (the renderer paints the overhang on the far side of the seam).
       roads: [
-        // top highway: full width, straight through the seam, then curves down into the upper road
-        { w: 3.2, dashed: true, pts: [[40, 12.6], [70, 12.6], [100, 12.6], [130, 12.6], [160, 12.6], [164, 12.6], [170, 14], [175, 17.5], [178, 21], [181, 24.5]] },
-        // second highway: starts mid-map, wraps, and merges into the upper road just after the seam
-        { w: 3.2, dashed: true, pts: [[84, 19.3], [110, 19.3], [140, 19.3], [160, 19.3], [166, 19.6], [171, 21], [176, 23]] },
-        // upper winding road (loops)
-        { w: 3, loop: true, pts: [[0, 23], [12, 22.5], [22, 25], [38, 20.5], [50, 23.5], [66, 20.5], [80, 25], [92, 23.5], [110, 25], [124, 23.5], [140, 27], [152, 25.5], [160, 23]] },
-        // lower winding road (loops); rises over the river in the middle of the map
-        { w: 3, loop: true, pts: [[0, 41], [12, 42], [24, 40.3], [40, 39], [52, 41.5], [66, 40], [80, 37.5], [92, 35], [108, 38.5], [124, 42], [140, 42.8], [152, 41], [160, 41]] },
-        // track along the bottom (loops)
-        { w: 2.8, loop: true, pts: [[0, 57.5], [20, 57], [40, 58], [60, 57.5], [80, 58], [100, 57.5], [120, 58], [140, 57], [160, 57.5]] },
-        // links between the upper and lower roads
-        { w: 2.6, pts: [[30, 23], [30, 32], [30, 39.8]] },
-        { w: 2.6, pts: [[50, 23.5], [52, 32], [50, 41.5]] },
-        { w: 2.6, pts: [[84, 19.3], [84, 22], [85, 24.4]] },
-        { w: 2.6, pts: [[120, 24], [121, 33], [124, 42]] },
+        // top highway -> seam -> stub on the west edge curving down onto the start of the upper road
+        { w: 3, dashed: true, pts: [[40, 12.6], [70, 12.6], [100, 12.6], [130, 12.6], [160, 12.6], [168, 12.6], [176, 15], [182, 19], [187, 22], [192, 24.5], [194, 25.2]] },
+        // second highway: a slip road off the upper road that merges back into the top highway before the seam
+        { w: 3, dashed: true, pts: [[84, 19.3], [110, 19.3], [136, 19.3], [146, 18.6], [152, 15.5], [158, 12.6]] },
+        { w: 2.6, pts: [[84, 19.3], [84, 22], [85, 24]] },
+        // upper winding road -> seam -> west-edge entry -> down beside the lake onto the start of the lower road
+        { w: 3, pts: [[34, 25.2], [40, 24.4], [46, 22.5], [58, 25.5], [72, 22.5], [86, 24], [100, 26.5], [114, 23.5], [128, 27], [142, 24.5], [152, 25], [160, 24], [166, 24.5], [174, 25], [182, 25.2], [184, 27], [184, 33], [184, 40]] },
         // the round loop hanging off the upper road on the right
-        { w: 2.6, pts: [[128, 24.4], [130, 29], [136, 33], [142, 31], [144, 27], [142, 26.7]] },
-        // crossings from the lower road over the river to the bottom track
-        { w: 2.4, pts: [[8, 41.5], [8, 48], [8, 53], [8, 57.3]] },
-        { w: 2.4, pts: [[76, 37.8], [76, 42], [76, 47], [76, 58]] },
-        { w: 2.4, pts: [[112, 38.6], [112, 44], [112, 50], [112, 58]] },
+        { w: 2.6, pts: [[126, 26.5], [130, 31], [136, 34], [142, 32], [144, 28], [142, 25.5]] },
+        // lower winding road -> seam -> west-edge entry -> down over the first bridge onto the bottom track
+        { w: 3, pts: [[24, 40], [40, 38.5], [52, 41], [66, 39.5], [80, 37], [92, 34.5], [108, 38], [124, 41.5], [140, 42.5], [152, 41], [160, 41], [164, 41.3], [167, 44], [167, 48], [167, 53], [168, 56], [170, 57.5]] },
+        // bottom track east to the base (and on to the third bridge)
+        { w: 2.8, pts: [[10, 57.5], [30, 57.5], [50, 57], [70, 57.5], [84, 57.5], [100, 57.5], [112, 57.5]] },
+        // the two other river crossings down from the lower road
+        { w: 2.4, pts: [[76, 37.6], [76, 42], [76, 47], [76, 57.5]] },
+        { w: 2.4, pts: [[112, 39], [112, 44], [112, 50], [112, 57.5]] },
       ],
       river: { w: 3.4, pts: [[0, 50], [30, 50.5], [50, 47.5], [66, 45.5], [80, 42.5], [92, 43], [108, 46.5], [124, 48.5], [140, 49.5], [160, 50]] },
       lakes: [
         [[40, 0], [56, -1], [66, 3], [62, 8], [50, 9], [42, 6]],
-        [[10, 30], [20, 29], [26, 32], [24, 36], [16, 37], [9, 34]],
+        [[10, 30], [19, 29], [21, 32], [20, 36], [13, 37], [9, 34]],
       ],
-      bridges: [{ w: 2.4, pts: [[8, 47.6], [8, 52.6]] }, { w: 2.4, pts: [[76, 40.8], [76, 46]] }, { w: 2.4, pts: [[112, 44.6], [112, 49.6]] }],
+      bridges: [{ w: 2.4, pts: [[7, 47.5], [7, 52.5]] }, { w: 2.4, pts: [[76, 40.8], [76, 46]] }, { w: 2.4, pts: [[112, 44.6], [112, 49.6]] }],
       hedges: [[[40, 16], [112, 16]], [[11, 54], [22, 53.5]]],
       buildings: [
-        { kind: 'house', x: 22, y: 34.5, w: 6, h: 3.5 },
+        { kind: 'house', x: 28, y: 33, w: 6, h: 3.5 },
         { kind: 'pool', x: 12, y: 44, w: 8, h: 3.5 },
-        { kind: 'house', x: 100, y: 37, w: 6, h: 3.5 },
+        { kind: 'house', x: 100, y: 38.5, w: 6, h: 3.5 },
         { kind: 'house', x: 100, y: 4, w: 7, h: 4 },
         { kind: 'field', x: 134, y: 1.5, w: 22, h: 7 },
         { kind: 'shed', x: 48, y: 50.5, w: 10, h: 4 },
-        { kind: 'base', x: 82, y: 50.5, w: 13, h: 6 },
+        { kind: 'base', x: 82, y: 50.5, w: 13, h: 5.5 },
       ],
-      fuel: [[60, 12], [38, 39], [124, 23], [140, 57]],
+      fuel: [[60, 12.6], [40, 38.5], [124, 26], [50, 57]],
       checkpoints: [
-        { x: 156, y: 12.6, dir: 0 }, { x: 100, y: 19.3, dir: 0 }, { x: 12, y: 22.5, dir: 0 }, { x: 66, y: 20.5, dir: 0 },
-        { x: 30, y: 32, dir: 90 }, { x: 51, y: 32, dir: 90 }, { x: 84, y: 22, dir: 90 }, { x: 121, y: 33, dir: 90 },
-        { x: 8, y: 44.5, dir: 90 }, { x: 76, y: 39.5, dir: 90 }, { x: 112, y: 41, dir: 90 },
-        { x: 40, y: 58, dir: 0 }, { x: 122, y: 58, dir: 180 },
+        { x: 156, y: 12.6, dir: 0 }, { x: 18, y: 16.3, dir: 55 }, { x: 46, y: 22.5, dir: 0 }, { x: 100, y: 26.5, dir: 0 },
+        { x: 8, y: 24.6, dir: 0 }, { x: 24, y: 33, dir: 90 }, { x: 52, y: 41, dir: 0 }, { x: 108, y: 38, dir: 0 },
+        { x: 3, y: 41.2, dir: 0 }, { x: 7, y: 45.5, dir: 90 }, { x: 30, y: 57.5, dir: 0 }, { x: 70, y: 57.5, dir: 0 },
+        { x: 76, y: 48.5, dir: 90 }, { x: 112, y: 52, dir: 90 },
       ],
-      wrecks: [[90, 11.4, 0.3], [118, 13.6, 1.9], [66, 41.2, 0.7], [30, 58.8, 2.4]],
+      wrecks: [[90, 11.8, 0.3], [118, 13.4, 1.9], [66, 40.7, 0.7], [30, 58.3, 2.4]],
       doors: [],
       trees: { count: 120, seed: 7 },
     },
